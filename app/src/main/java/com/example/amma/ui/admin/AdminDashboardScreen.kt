@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -43,17 +44,21 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MedicalServices
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -72,7 +77,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1005,6 +1012,275 @@ private fun DiagnosticsTab(
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
+                    }
+                }
+            }
+        }
+
+        // Section 4: Over-The-Air (OTA) Updates via GitHub Releases
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val coroutineScope = rememberCoroutineScope()
+            val otaManager = remember { com.example.amma.ota.OtaUpdateManager(context) }
+            val updateStatus by otaManager.updateStatus.collectAsState()
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = AmmaSurface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AmmaBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.SystemUpdate,
+                                contentDescription = null,
+                                tint = Color(0xFF0A84FF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Software & OTA Updates",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AmmaTextPrimary
+                            )
+                        }
+
+                        // Version Badge
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AmmaSurfaceElevated)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "v${com.example.amma.BuildConfig.VERSION_NAME}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AmmaGreenBright
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Seamless Over-The-Air updates from GitHub repository.",
+                        fontSize = 13.sp,
+                        color = AmmaTextSecondary
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    when (val status = updateStatus) {
+                        is com.example.amma.ota.UpdateStatus.Idle -> {
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        otaManager.checkForUpdates()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Refresh,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Check for Updates", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.Checking -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AmmaSurfaceElevated)
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color(0xFF0A84FF),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Checking for latest release...", fontSize = 14.sp, color = AmmaTextPrimary)
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.UpToDate -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1C2B20))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF34C759),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "CareTouch is Up to Date",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Current version v${status.version} is the latest release.",
+                                        fontSize = 12.sp,
+                                        color = AmmaTextSecondary
+                                    )
+                                }
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.UpdateAvailable -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1A2634))
+                                    .padding(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Update Available: v${status.info.latestVersion}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = Color(0xFF0A84FF)
+                                    )
+                                    Text(
+                                        text = String.format("%.1f MB", status.info.apkSizeMb),
+                                        fontSize = 12.sp,
+                                        color = AmmaTextSecondary
+                                    )
+                                }
+
+                                if (status.info.releaseNotes.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = status.info.releaseNotes.take(150) + if (status.info.releaseNotes.length > 150) "..." else "",
+                                        fontSize = 12.sp,
+                                        color = AmmaTextSecondary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            otaManager.downloadAndInstall(status.info)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CloudDownload,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Download & Install Update", fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.Downloading -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AmmaSurfaceElevated)
+                                    .padding(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Downloading OTA Update...", fontSize = 13.sp, color = AmmaTextPrimary, fontWeight = FontWeight.Bold)
+                                    Text("${status.progressPercent}%", fontSize = 13.sp, color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { status.progressPercent / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                    color = Color(0xFF0A84FF),
+                                    trackColor = Color(0xFF2C2C2E)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = String.format("%.1f MB / %.1f MB", status.downloadedMb, status.totalMb),
+                                    fontSize = 12.sp,
+                                    color = AmmaTextSecondary
+                                )
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.ReadyToInstall -> {
+                            Button(
+                                onClick = { otaManager.installApk(status.apkFile) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SystemUpdate,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Install Downloaded Update", fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+                        }
+                        is com.example.amma.ota.UpdateStatus.Error -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF2C2415))
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = status.message,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFFF9F0A)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            otaManager.checkForUpdates()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9F0A))
+                                ) {
+                                    Text("Retry", fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+                            }
+                        }
                     }
                 }
             }
