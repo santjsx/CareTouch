@@ -143,12 +143,23 @@ class AuthRepository(private val context: Context) {
         }
     }
 
-    fun signOut() {
+    suspend fun signOut(): Result<Unit> = withContext(Dispatchers.IO) {
+        _authState.value = AuthState.SigningOut
+        try {
+            // Clear device credential session to allow fresh account selection
+            credentialManager.clearCredentialState(androidx.credentials.ClearCredentialStateRequest())
+        } catch (e: Exception) {
+            Log.w(TAG, "Non-fatal clearCredentialState warning", e)
+        }
+
         try {
             firebaseAuth.signOut()
             _authState.value = AuthState.Unauthenticated
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Error signing out", e)
+            _authState.value = AuthState.Unauthenticated
+            Result.failure(e)
         }
     }
 

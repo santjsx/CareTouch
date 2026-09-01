@@ -93,6 +93,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -108,6 +113,7 @@ import com.example.amma.theme.AmmaRedEmergency
 import com.example.amma.theme.AmmaSurface
 import com.example.amma.theme.AmmaSurfaceElevated
 import com.example.amma.theme.AmmaTextPrimary
+import com.example.amma.ui.components.SignOutConfirmationDialog
 import com.example.amma.theme.AmmaTextSecondary
 import com.example.amma.theme.AmmaWhatsAppGreen
 import com.example.amma.theme.AmmaBlueInfo
@@ -125,6 +131,13 @@ fun AdminDashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showSignOutConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.authState) {
+        if (uiState.authState is AuthState.Unauthenticated) {
+            showSignOutConfirm = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -239,7 +252,7 @@ fun AdminDashboardScreen(
                     uiState = uiState,
                     onRunAudioTest = { viewModel.testTeluguSpeech("అమ్మా, సిగ్నల్ మరియు బ్యాటరీ పరీక్ష విజయవంతమైంది.") },
                     onSignInGoogle = { ctx -> viewModel.signInWithGoogle(ctx) },
-                    onSignOut = { viewModel.signOut() }
+                    onSignOut = { showSignOutConfirm = true }
                 )
             }
 
@@ -248,6 +261,14 @@ fun AdminDashboardScreen(
                     initialContact = uiState.editingContact!!,
                     onSave = { viewModel.saveContact(it) },
                     onDismiss = { viewModel.closeContactDialog() }
+                )
+            }
+
+            if (showSignOutConfirm) {
+                SignOutConfirmationDialog(
+                    authState = uiState.authState,
+                    onConfirmSignOut = { viewModel.signOut() },
+                    onDismiss = { showSignOutConfirm = false }
                 )
             }
         }
@@ -846,104 +867,184 @@ private fun DiagnosticsTab(
                 border = androidx.compose.foundation.BorderStroke(1.dp, AmmaBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    when (val auth = uiState.authState) {
-                        is AuthState.Authenticated -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                    AnimatedContent(
+                        targetState = uiState.authState,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "cloud_status_card"
+                    ) { auth ->
+                        when (auth) {
+                            is AuthState.Authenticated -> {
                                 Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    if (!auth.photoUrl.isNullOrBlank()) {
-                                        coil.compose.SubcomposeAsyncImage(
-                                            model = auth.photoUrl,
-                                            contentDescription = "Avatar",
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape),
-                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                            error = {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(42.dp)
-                                                        .clip(CircleShape)
-                                                        .background(AmmaGreenBright.copy(alpha = 0.2f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (!auth.photoUrl.isNullOrBlank()) {
+                                            coil.compose.SubcomposeAsyncImage(
+                                                model = auth.photoUrl,
+                                                contentDescription = "Avatar",
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .clip(CircleShape),
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                error = {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(42.dp)
+                                                            .clip(CircleShape)
+                                                            .background(AmmaGreenBright.copy(alpha = 0.2f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
+                                                    }
                                                 }
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(42.dp)
+                                                    .clip(CircleShape)
+                                                    .background(AmmaGreenBright.copy(alpha = 0.2f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
                                             }
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(AmmaGreenBright.copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column {
+                                            Text(
+                                                text = auth.displayName ?: "Caregiver",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = AmmaTextPrimary
+                                            )
+                                            Text(
+                                                text = "🟢 Cloud Sync Active (${auth.email ?: ""})",
+                                                fontSize = 12.sp,
+                                                color = AmmaGreenBright
+                                            )
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Button(
+                                        onClick = onSignOut,
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+                                    ) {
+                                        Text("Sign Out", fontSize = 12.sp, color = Color.White)
+                                    }
+                                }
+                            }
 
-                                    Column {
+                            is AuthState.SigningOut -> {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = AmmaRedEmergency,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Safely disconnecting cloud session...",
+                                        fontSize = 13.sp,
+                                        color = AmmaTextPrimary
+                                    )
+                                }
+                            }
+
+                            is AuthState.Loading -> {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Connecting to Google...",
+                                        fontSize = 13.sp,
+                                        color = AmmaTextPrimary
+                                    )
+                                }
+                            }
+
+                            is AuthState.Error -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = auth.displayName ?: "Caregiver",
+                                            text = "Sync Paused",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = AmmaRedEmergency
+                                        )
+                                        Text(
+                                            text = auth.message,
+                                            fontSize = 12.sp,
+                                            color = AmmaTextSecondary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = { onSignInGoogle(context) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                                    ) {
+                                        Text("Retry", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    }
+                                }
+                            }
+
+                            AuthState.Unauthenticated -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Cloud Backup & Sync",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             color = AmmaTextPrimary
                                         )
                                         Text(
-                                            text = "🟢 Cloud Sync Active (${auth.email ?: ""})",
+                                            text = "Sign in with Google to protect and sync contacts",
                                             fontSize = 12.sp,
-                                            color = AmmaGreenBright
+                                            color = AmmaTextSecondary
                                         )
                                     }
-                                }
 
-                                Button(
-                                    onClick = onSignOut,
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
-                                ) {
-                                    Text("Sign Out", fontSize = 12.sp, color = Color.White)
-                                }
-                            }
-                        }
+                                    Spacer(modifier = Modifier.width(8.dp))
 
-                        else -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Cloud Backup & Sync",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = AmmaTextPrimary
-                                    )
-                                    Text(
-                                        text = "Sign in with Google to protect and sync contacts",
-                                        fontSize = 12.sp,
-                                        color = AmmaTextSecondary
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                Button(
-                                    onClick = { onSignInGoogle(context) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White)
-                                ) {
-                                    Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    Button(
+                                        onClick = { onSignInGoogle(context) },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                                    ) {
+                                        Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                    }
                                 }
                             }
                         }

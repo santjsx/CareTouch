@@ -149,7 +149,9 @@ class AdminViewModel : ViewModel() {
     }
 
     fun signOut() {
-        authRepo.signOut()
+        viewModelScope.launch {
+            authRepo.signOut()
+        }
     }
 
     fun saveR2Config(r2Config: R2Config) {

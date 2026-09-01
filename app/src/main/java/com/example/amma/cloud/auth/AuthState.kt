@@ -6,6 +6,7 @@ package com.example.amma.cloud.auth
 sealed interface AuthState {
     data object Unauthenticated : AuthState
     data object Loading : AuthState
+    data object SigningOut : AuthState
     data class Authenticated(
         val uid: String,
         val displayName: String?,
