@@ -13,13 +13,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 data class UpdateInfo(
@@ -31,7 +32,7 @@ data class UpdateInfo(
     val downloadUrl: String,
     val apkSizeBytes: Long
 ) {
-    val apkSizeMb: Double get() = if (apkSizeBytes > 0) apkSizeBytes / (1024.0 * 1024.0) else 15.0
+    val apkSizeMb: Double get() = if (apkSizeBytes > 0L) apkSizeBytes.toDouble() / (1024.0 * 1024.0) else 15.0
 }
 
 sealed interface UpdateStatus {
@@ -46,11 +47,10 @@ sealed interface UpdateStatus {
 
 class OtaUpdateManager(private val context: Context) {
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .writeTimeout(45, TimeUnit.SECONDS)
-        .fastFallback(true) // Dual-stack Happy Eyeballs: connects in ~50ms bypassing IPv6 stalls
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10L, TimeUnit.SECONDS)
+        .readTimeout(45L, TimeUnit.SECONDS)
+        .writeTimeout(45L, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .followRedirects(true)
         .followSslRedirects(true)
@@ -96,13 +96,13 @@ class OtaUpdateManager(private val context: Context) {
                 val currentVersion = BuildConfig.VERSION_NAME.removePrefix("v").trim()
 
                 // Find APK in release assets
-                val assets = json.optJSONArray("assets")
+                val assets: JSONArray? = json.optJSONArray("assets")
                 var apkDownloadUrl = ""
                 var apkSize = 0L
 
                 if (assets != null) {
                     for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
+                        val asset: JSONObject = assets.getJSONObject(i)
                         val name = asset.optString("name", "")
                         if (name.endsWith(".apk", ignoreCase = true)) {
                             apkDownloadUrl = asset.optString("browser_download_url", "")
@@ -170,16 +170,17 @@ class OtaUpdateManager(private val context: Context) {
                         return@withContext
                     }
 
-                    val body = response.body ?: run {
+                    val responseBody = response.body ?: run {
                         _updateStatus.value = UpdateStatus.Error("Empty download body")
                         return@withContext
                     }
 
-                    val contentLength = body.contentLength().takeIf { it > 0 } ?: info.apkSizeBytes
-                    val finalTotalMb = if (contentLength > 0) contentLength / (1024.0 * 1024.0) else totalSizeMb
+                    val rawContentLength = responseBody.contentLength()
+                    val contentLength = if (rawContentLength > 0L) rawContentLength else info.apkSizeBytes
+                    val finalTotalMb = if (contentLength > 0L) contentLength.toDouble() / (1024.0 * 1024.0) else totalSizeMb
 
-                    val inputStream = body.byteStream().buffered(64 * 1024)
-                    val outputStream = FileOutputStream(targetFile).buffered(64 * 1024)
+                    val inputStream: InputStream = responseBody.byteStream()
+                    val outputStream = FileOutputStream(targetFile)
 
                     val buffer = ByteArray(64 * 1024)
                     var bytesRead: Int
@@ -187,15 +188,22 @@ class OtaUpdateManager(private val context: Context) {
                     var lastEmitTime = 0L
                     var lastEmitPercent = -1
 
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
-                        totalBytesRead += bytesRead
+                    while (true) {
+                        bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
 
-                        val percent = if (contentLength > 0) ((totalBytesRead * 100) / contentLength).toInt().coerceIn(0, 100) else 0
-                        val downloadedMb = totalBytesRead / (1024.0 * 1024.0)
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead.toLong()
+
+                        val percent = if (contentLength > 0L) {
+                            ((totalBytesRead * 100L) / contentLength).toInt().coerceIn(0, 100)
+                        } else {
+                            0
+                        }
+                        val downloadedMb = totalBytesRead.toDouble() / (1024.0 * 1024.0)
 
                         val now = System.currentTimeMillis()
-                        if (percent != lastEmitPercent && (now - lastEmitTime >= 30 || percent == 100)) {
+                        if (percent != lastEmitPercent && (now - lastEmitTime >= 30L || percent == 100)) {
                             lastEmitTime = now
                             lastEmitPercent = percent
                             _updateStatus.value = UpdateStatus.Downloading(percent, downloadedMb, finalTotalMb)
