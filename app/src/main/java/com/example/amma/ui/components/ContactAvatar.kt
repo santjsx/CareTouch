@@ -50,17 +50,14 @@ fun ContactAvatar(
     }
 
     val relationshipIcon: ImageVector = when {
-        contact.displayName.contains("Doctor", ignoreCase = true) || contact.relationship.contains("Doctor", ignoreCase = true) -> Icons.Rounded.LocalHospital
-        contact.relationship.contains("Husband", ignoreCase = true) || contact.relationship.contains("భర్త") -> Icons.Rounded.Favorite
-        contact.relationship.contains("Daughter", ignoreCase = true) || contact.relationship.contains("కూతురు") -> Icons.Rounded.Face
-        contact.relationship.contains("Son", ignoreCase = true) || contact.relationship.contains("కొడుకు") -> Icons.Rounded.Person
+        contact.displayName.contains("Doctor", ignoreCase = true) || contact.displayName.contains("వైద్యు") -> Icons.Rounded.LocalHospital
+        contact.isEmergencyContact -> Icons.Rounded.Favorite
         else -> Icons.Rounded.Person
     }
 
     val avatarGradient = when {
         contact.isEmergencyContact -> listOf(Color(0xFF8B0000), Color(0xFFC62828))
         contact.primaryTransport == CallTransport.WHATSAPP_VIDEO -> listOf(Color(0xFF0F5132), Color(0xFF198754))
-        contact.relationship.contains("Husband") || contact.relationship.contains("భర్త") -> listOf(Color(0xFF4A148C), Color(0xFF7B1FA2))
         else -> listOf(Color(0xFF1A365D), Color(0xFF2B6CB0))
     }
 

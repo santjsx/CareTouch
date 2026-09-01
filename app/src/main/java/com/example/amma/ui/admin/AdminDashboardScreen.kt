@@ -365,13 +365,8 @@ private fun ContactsTab(
                                 )
                             }
                         }
-                        val subtitle = if (contact.relationship.isNotBlank()) {
-                            "${contact.relationship} • ${contact.phoneNumber}"
-                        } else {
-                            contact.phoneNumber
-                        }
                         Text(
-                            text = subtitle,
+                            text = contact.phoneNumber,
                             fontSize = 13.sp,
                             color = AmmaTextSecondary
                         )
@@ -1380,7 +1375,6 @@ private fun ContactEditorSheet(
     val context = LocalContext.current
     var contactId by remember { mutableStateOf(initialContact.id) }
     var name by remember { mutableStateOf(initialContact.displayName) }
-    var relationship by remember { mutableStateOf(initialContact.relationship) }
     var phone by remember { mutableStateOf(initialContact.phoneNumber) }
     var whatsapp by remember { mutableStateOf(initialContact.whatsappNumber) }
     var pronunciation by remember { mutableStateOf(initialContact.customPronunciation ?: "") }
@@ -1463,7 +1457,7 @@ private fun ContactEditorSheet(
                                             onSave(
                                                 initialContact.copy(
                                                     displayName = name.trim(),
-                                                    relationship = relationship.trim(),
+                                                    relationship = "",
                                                     phoneNumber = phone.trim(),
                                                     whatsappNumber = if (whatsapp.isBlank()) phone.trim() else whatsapp.trim(),
                                                     customPronunciation = pronunciation.trim().ifEmpty { null },
@@ -1493,7 +1487,7 @@ private fun ContactEditorSheet(
                             ) {
                                 val currentContactForAvatar = initialContact.copy(
                                     displayName = name,
-                                    relationship = relationship,
+                                    relationship = "",
                                     photoUri = photoUri,
                                     isEmergencyContact = isEmergency
                                 )
@@ -1513,68 +1507,23 @@ private fun ContactEditorSheet(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(AmmaSurfaceElevated)
-                                            .border(1.dp, AmmaGreenBright.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                photoPickerLauncher.launch(
-                                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                                )
-                                            }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.AddPhotoAlternate,
-                                            contentDescription = null,
-                                            tint = AmmaGreenBright,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (photoUri.isNullOrBlank()) "Upload Photo" else "Change Photo",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = AmmaGreenBright
-                                        )
-                                    }
-
-                                    if (!photoUri.isNullOrBlank()) {
-                                        Row(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(AmmaSurfaceElevated)
-                                                .border(1.dp, AmmaRedEmergency.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                                                .clickable { photoUri = null }
-                                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.DeleteOutline,
-                                                contentDescription = null,
-                                                tint = AmmaRedEmergency,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Remove",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = AmmaRedEmergency
+                                Text(
+                                    text = if (photoUri != null) "Change Photo (ఫోటో మార్చండి)" else "Add Photo (ఫోటో జోడించండి)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AmmaGreenBright,
+                                    modifier = Modifier
+                                        .bounceClick {
+                                            photoPickerLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                             )
                                         }
-                                    }
-                                }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
                             }
                         }
 
-                        // Form Section 1: Contact Details
+                        // Form Inputs Section
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1587,20 +1536,6 @@ private fun ContactEditorSheet(
                                         value = name,
                                         onValueChange = { name = it },
                                         label = { Text("Display Name (e.g. Santhosh)") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = AmmaGreenBright,
-                                            unfocusedBorderColor = AmmaBorder,
-                                            focusedTextColor = Color.White,
-                                            unfocusedTextColor = Color.White
-                                        )
-                                    )
-
-                                    OutlinedTextField(
-                                        value = relationship,
-                                        onValueChange = { relationship = it },
-                                        label = { Text("Relationship (e.g. Son / కొడుకు)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(

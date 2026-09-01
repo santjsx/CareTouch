@@ -73,7 +73,7 @@ fun ContactActionModal(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "${contact.displayName} (${contact.relationship})",
+                    text = contact.displayName,
                     fontSize = AmmaTextSizes.ModalTitle,
                     fontWeight = FontWeight.ExtraBold,
                     color = AmmaTextPrimary
