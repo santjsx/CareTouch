@@ -1,0 +1,2554 @@
+Do not build a “speed dialer.” Build a dedicated communication interface for a person who is effectively non-literate with respect to written UI.
+
+That changes almost every design decision.
+
+The app should not make your mother learn the app. The app should make the phone communicate with her through faces, colors, icons, Telugu speech, sound cues, vibration, and extremely predictable interactions.
+
+There is also one technical constraint you need to accept upfront: normal cellular calling can be made first-class through Android's Telecom APIs, but WhatsApp voice/video calling is controlled by WhatsApp. Your app should not depend on an undocumented mechanism to directly place arbitrary WhatsApp calls. WhatsApp's own documented flow is through WhatsApp's contact/chat/call UI.
+
+Below is the production-grade specification I would use.
+
+Project: Amma — Voice-First Communication Launcher
+Product thesis
+
+One screen. Familiar faces. One tap. Telugu voice guidance. Zero reading required.
+
+The app should allow her to:
+
+Call someone normally
+WhatsApp audio call
+WhatsApp video call
+Know the current time
+Know today's date/day
+Know battery status
+Know mobile-network status
+Know Wi-Fi/internet status
+Know whether WhatsApp is available
+Hear important notifications
+Understand failures without reading anything
+Recover from mistakes without getting stuck
+1. Core UX principle
+
+The application has two users:
+
+Primary user — Mother
+
+She should never need to understand:
+
+English
+Telugu text
+settings terminology
+Android terminology
+phone numbers
+percentages
+network icons
+notification icons
+menus
+navigation hierarchy
+Secondary user — Family/admin
+
+A family member configures:
+
+contacts
+photos
+contact relationships
+preferred call method
+Telugu voice phrases
+ordering
+emergency contacts
+behavior
+accessibility settings
+notification behavior
+
+This creates an important architectural separation:
+
+Admin mode ≠ Mom mode.
+
+Mom mode should be almost impossible to accidentally configure.
+
+2. The primary screen
+
+This is the most important screen in the entire product.
+
+Do not create a conventional Android home screen.
+
+No:
+
+hamburger menu
+bottom navigation
+floating action button
+tiny status icons
+dense cards
+text-heavy dashboard
+contact list with names as the primary identifier
+
+Instead:
+
+┌─────────────────────────────────────┐
+│                                     │
+│       ☀️   10:42 AM                 │
+│       Tuesday, September 1           │
+│                                     │
+│      📶 Good network     🔋 82%      │
+│                                     │
+│                                     │
+│      ┌────────┐    ┌────────┐       │
+│      │        │    │        │       │
+│      │  PHOTO │    │  PHOTO │       │
+│      │        │    │        │       │
+│      └────────┘    └────────┘       │
+│       Amma             Nanna        │
+│                                     │
+│      ┌────────┐    ┌────────┐       │
+│      │        │    │        │       │
+│      │  PHOTO │    │  PHOTO │       │
+│      │        │    │        │       │
+│      └────────┘    └────────┘       │
+│       Son              Daughter     │
+│                                     │
+│                                     │
+│           🔊 "అమ్మా..."             │
+│                                     │
+└─────────────────────────────────────┘
+
+But even that isn't quite enough.
+
+The photograph should be the primary identifier.
+
+Names are secondary.
+
+3. Contact card design
+
+Each person gets an extremely large contact tile.
+
+Contact tile
+┌───────────────────────┐
+│                       │
+│      [ PHOTO ]        │
+│                       │
+│        Son            │
+│                       │
+│     ☎    WhatsApp     │
+│     📹                │
+└───────────────────────┘
+
+However, don't make all three buttons equally prominent.
+
+The better interaction is:
+
+Tap
+
+Normal phone call
+
+Long press
+
+Opens communication choices:
+
+         [ PHOTO ]
+
+     Call normally
+       📞
+
+     WhatsApp audio
+       🎧
+
+     WhatsApp video
+       📹
+
+But even better:
+
+Configurable primary action
+
+For each contact:
+
+Son
+Primary action → Normal call
+Secondary → WhatsApp audio
+Secondary → WhatsApp video
+
+Then the mother simply taps the person's face.
+
+This dramatically reduces cognitive load.
+
+4. Voice-first interaction
+
+This is where the app becomes genuinely useful.
+
+Every important interaction should have audio feedback.
+
+For example:
+
+Opening app
+
+“అమ్మా, శుభోదయం. ఇప్పుడు ఉదయం పది గంటల నలభై రెండు నిమిషాలు.”
+
+Tapping son
+
+“సంతోష్‌కి ఫోన్ చేస్తున్నాను.”
+
+Then:
+
+“సంతోష్‌కి ఫోన్ కలుపుతున్నాను.”
+
+Call succeeds
+
+“ఫోన్ కలిసింది.”
+
+Call fails
+
+“ఫోన్ కలవలేదు. నెట్‌వర్క్ సిగ్నల్ సరిగా లేదు.”
+
+WhatsApp unavailable
+
+“వాట్సాప్ అందుబాటులో లేదు.”
+
+Internet unavailable
+
+“ఇంటర్నెట్ లేదు. సాధారణ ఫోన్ చేయాలంటే మళ్లీ నొక్కండి.”
+
+The important principle:
+
+Never say technical language.
+
+Bad:
+
+“Mobile network unavailable.”
+
+Good:
+
+“ఫోన్ సిగ్నల్ లేదు.”
+
+5. Telugu voice system
+
+Do not hard-code TTS everywhere.
+
+Create a dedicated:
+
+VoiceGuidanceEngine
+
+Conceptually:
+
+User action
+     ↓
+Interaction event
+     ↓
+Voice message resolver
+     ↓
+Telugu phrase
+     ↓
+Text-to-Speech
+     ↓
+Audio output
+
+Example:
+
+CALL_STARTED
+→ "ఫోన్ చేస్తున్నాను"
+
+CALL_CONNECTED
+→ "ఫోన్ కలిసింది"
+
+CALL_FAILED
+→ "ఫోన్ కలవలేదు"
+
+NO_NETWORK
+→ "ఫోన్ సిగ్నల్ లేదు"
+
+NO_INTERNET
+→ "ఇంటర్నెట్ లేదు"
+
+BATTERY_LOW
+→ "బ్యాటరీ చాలా తక్కువగా ఉంది"
+
+WHATSAPP_NOT_AVAILABLE
+→ "వాట్సాప్ ఫోన్‌లో లేదు"
+
+Use Android's Text-to-Speech framework first.
+
+But don't assume every device has an excellent Telugu voice installed.
+
+The app needs:
+
+Voice availability checker
+Telugu TTS available?
+       │
+       ├── YES → use Telugu TTS
+       │
+       └── NO
+            ↓
+      voice fallback
+            ↓
+      configuration warning
+
+For critical phrases, you can additionally ship carefully recorded Telugu audio assets.
+
+That gives you deterministic pronunciation for things like:
+
+“ఫోన్ చేస్తున్నాను”
+“ఫోన్ కలిసింది”
+“ఫోన్ కలవలేదు”
+“బ్యాటరీ తక్కువగా ఉంది”
+“సిగ్నల్ లేదు”
+6. Time should be spoken, not merely displayed
+
+Your mother doesn't know how to read time.
+
+Therefore:
+
+Don't rely on
+
+10:42
+
+Instead provide:
+
+10:42 AM
+
+🔊
+"ఇప్పుడు ఉదయం పది గంటల నలభై రెండు నిమిషాలు."
+
+Tap the clock:
+
+“ఇప్పుడు ఉదయం పది గంటల నలభై రెండు నిమిషాలు.”
+
+Long press:
+
+“ఈరోజు మంగళవారం, సెప్టెంబర్ ఒకటో తేదీ.”
+
+7. Time widget
+
+The visual representation can still be beautiful.
+
+Use:
+
+Large analog clock
+
+instead of depending entirely on digital numbers.
+
+For example:
+
+5
+
+But the clock should remain secondary to communication.
+
+8. Battery indicator
+
+Do not make her interpret:
+
+82%
+
+Instead:
+
+🔋
+
+Battery good
+
+And tapping it:
+
+“బ్యాటరీ ఎనభై రెండు శాతం ఉంది.”
+
+States:
+
+Battery	Visual	Voice
+80–100%	Excellent	“బ్యాటరీ బాగుంది.”
+50–79%	Good	“బ్యాటరీ బాగుంది.”
+20–49%	Medium	“బ్యాటరీ సగం కంటే తక్కువగా ఉంది.”
+10–19%	Low	“బ్యాటరీ తక్కువగా ఉంది.”
+0–9%	Critical	“బ్యాటరీ చాలా తక్కువగా ఉంది. ఛార్జర్ పెట్టండి.”
+Charging	Charging	“బ్యాటరీ ఛార్జ్ అవుతోంది.”
+
+Never make her understand percentages.
+
+9. Network indicator
+
+This deserves its own component.
+
+Instead of Android's tiny signal bars:
+
+📶
+బాగుంది
+
+Possible states:
+
+Excellent
+
+“ఫోన్ సిగ్నల్ బాగుంది.”
+
+Weak
+
+“ఫోన్ సిగ్నల్ కొంచెం తక్కువగా ఉంది.”
+
+No signal
+
+“ఫోన్ సిగ్నల్ లేదు.”
+
+SIM missing
+
+“ఫోన్ సిమ్ కనిపించడం లేదు.”
+
+Airplane mode
+
+“ఫోన్ ఎయిర్‌ప్లేన్ మోడ్‌లో ఉంది.”
+
+This information should be semantic, not technical.
+
+10. Internet status
+
+Separate:
+
+Mobile network
+
+from:
+
+Internet connectivity
+
+Because:
+
+SIM signal ≠ Internet connectivity
+
+Example:
+
+📶 Phone signal
+GOOD
+
+🌐 Internet
+NOT AVAILABLE
+
+Voice:
+
+“ఫోన్ సిగ్నల్ ఉంది కానీ ఇంటర్నెట్ లేదు.”
+
+This is extremely useful for WhatsApp calls.
+
+11. Smart call routing
+
+This should be one of the app's strongest features.
+
+Suppose she taps:
+
+Daughter → WhatsApp Video
+
+System checks:
+
+WhatsApp installed?
+        ↓
+WhatsApp contact available?
+        ↓
+Internet available?
+        ↓
+Attempt WhatsApp launch
+
+If internet unavailable:
+
+"ఇంటర్నెట్ లేదు.
+సాధారణ ఫోన్ చేయాలా?"
+
+Then two giant buttons:
+
+      YES                 NO
+      📞                  ❌
+
+And ideally:
+
+“సాధారణ ఫోన్ చేయడానికి ఆకుపచ్చ బటన్ నొక్కండి.”
+
+12. WhatsApp architecture reality
+
+This needs to be designed honestly.
+
+Your app cannot own WhatsApp's calling infrastructure.
+
+WhatsApp handles its own:
+
+voice calling
+video calling
+authentication
+contacts
+call state
+network transport
+incoming call UI
+
+Your application should therefore act as a launcher/orchestrator.
+
+Conceptually:
+
+Amma App
+   │
+   ├── Normal call
+   │      ↓
+   │   Android Telecom
+   │
+   ├── WhatsApp
+   │      ↓
+   │   WhatsApp
+   │
+   └── Voice guidance
+          ↓
+      Amma App
+
+Don't try to reverse engineer WhatsApp.
+
+That's fragile, potentially policy-problematic, and not production-grade.
+
+WhatsApp's own documentation shows that video calls are initiated inside WhatsApp's calling/chat experience.
+
+13. Normal phone calling
+
+For a simple launcher, Android provides:
+
+ACTION_DIAL
+
+and:
+
+ACTION_CALL
+
+ACTION_DIAL opens the phone app with the number ready; ACTION_CALL places the call directly and requires CALL_PHONE.
+
+For your use case, direct calling is preferable only after explicit configuration and permission, because the entire point is one-tap calling.
+
+But there's another architectural choice.
+
+14. Should this become the default dialer?
+
+Potentially, yes.
+
+If you want a genuinely integrated phone experience, consider implementing Android's:
+
+ROLE_DIALER
+
+That allows the app to become the device's default phone application and implement InCallService. Android's current requirements include handling ACTION_DIAL and providing the required in-call UI.
+
+But don't automatically make it the default dialer in v1.
+
+That's a huge increase in responsibility.
+
+Your first release should be:
+
+Communication launcher + accessibility layer
+
+Then potentially evolve into:
+
+Full default dialer
+
+15. Incoming call experience
+
+This is critical.
+
+The mother shouldn't have to understand Android's normal incoming-call UI.
+
+For normal phone calls:
+
+┌──────────────────────────┐
+│                          │
+│        INCOMING CALL     │
+│                          │
+│        [ PHOTO ]         │
+│                          │
+│          SON             │
+│                          │
+│                          │
+│     🟢 ANSWER            │
+│                          │
+│     🔴 DECLINE           │
+│                          │
+└──────────────────────────┘
+
+And voice:
+
+“సంతోష్ ఫోన్ చేస్తున్నాడు.”
+
+Then:
+
+“ఫోన్ ఎత్తడానికి ఆకుపచ్చ బటన్ నొక్కండి.”
+
+This should be reinforced by:
+
+visual animation
+ringtone
+vibration
+spoken caller identity
+16. Unknown caller
+
+Never say:
+
+“Unknown number.”
+
+Instead:
+
+“తెలియని నంబర్ నుంచి ఫోన్ వచ్చింది.”
+
+Display:
+
+        📞
+
+    తెలియని వ్యక్తి
+
+   🟢 Answer
+   🔴 Decline
+17. WhatsApp incoming call
+
+This is trickier because WhatsApp owns its incoming call experience.
+
+Your app should not attempt to replace WhatsApp's incoming call system unless the platform/WhatsApp integration actually supports it.
+
+Instead:
+
+ensure WhatsApp notifications are visible
+provide clear setup guidance
+optionally provide a notification listener only if genuinely necessary and policy-compliant
+don't intercept or manipulate WhatsApp calls through unsupported APIs
+18. Emergency contact
+
+The home screen should reserve one location for an emergency contact.
+
+Example:
+
+┌────────────────────────┐
+│                        │
+│        🚨 HELP         │
+│                        │
+│     "సహాయం కోసం       │
+│       ఫోన్ చేయండి"     │
+│                        │
+└────────────────────────┘
+
+But don't make this an arbitrary emergency-number shortcut.
+
+Configure:
+
+Emergency contact:
+Son
+
+Then:
+
+“సహాయం కోసం సంతోష్‌కి ఫోన్ చేస్తున్నాను.”
+
+You should also prevent accidental activation.
+
+For example:
+
+Press and hold for 1 second
+
+rather than one tap.
+
+19. Accidental-touch protection
+
+This is one of the most important parts.
+
+Your mother may:
+
+tap twice
+tap nearby
+touch while holding the phone
+accidentally swipe
+press the wrong button
+
+Therefore:
+
+Don't use swipe-based navigation for critical actions.
+
+Prefer:
+
+Tap → confirmation
+
+or:
+
+Press-and-hold
+
+for destructive/high-impact operations.
+
+20. Call confirmation
+
+You need to balance speed with accidental calls.
+
+Recommended:
+
+Normal contact
+
+One tap:
+
+Tap Son
+↓
+small 300–500 ms confirmation animation
+↓
+call
+
+No dialog.
+
+Emergency contact
+
+Long press.
+
+Delete/edit
+
+Admin mode only.
+
+21. The contact grid
+
+I would use:
+
+2-column grid
+
+on normal phones.
+
+Example:
+
+        10:42
+
+     📶       🔋
+
+┌────────────┐ ┌────────────┐
+│            │ │            │
+│   PHOTO    │ │   PHOTO    │
+│            │ │            │
+│   SON      │ │ DAUGHTER   │
+└────────────┘ └────────────┘
+
+┌────────────┐ ┌────────────┐
+│            │ │            │
+│   PHOTO    │ │   PHOTO    │
+│            │ │            │
+│   NANA     │ │   UNCLE    │
+└────────────┘ └────────────┘
+
+Maximum:
+
+6–8 primary contacts
+
+Anything beyond that belongs behind:
+
+“More people”
+
+with another large visual grid.
+
+22. Contact photos
+
+Photos are not decoration.
+
+They are the primary semantic identifier.
+
+Requirements:
+
+large face crop
+high contrast
+no tiny circular avatars
+consistent crop
+face centered
+good image quality
+fallback generated avatar
+no text dependency
+
+Admin should be able to crop the photo manually.
+
+23. Contact detail screen
+
+If the user taps and holds a contact:
+
+             [PHOTO]
+
+              SON
+
+        ┌───────────────┐
+        │ 📞 PHONE CALL │
+        └───────────────┘
+
+        ┌───────────────┐
+        │ 🎧 WHATSAPP   │
+        └───────────────┘
+
+        ┌───────────────┐
+        │ 📹 VIDEO CALL │
+        └───────────────┘
+
+Voice:
+
+“సంతోష్‌కి ఏ విధంగా ఫోన్ చేయాలి?”
+
+Then each action speaks when focused.
+
+24. No-reading mode
+
+This should be a first-class setting.
+
+Visual-only mode
+
+Photos + icons.
+
+Voice-assisted mode
+
+Photos + icons + spoken guidance.
+
+Maximum assistance mode
+
+Every important interaction speaks.
+
+For your mother:
+
+Maximum assistance should be the default.
+
+25. Sound design
+
+Don't treat sound as an afterthought.
+
+Create a tiny audio language:
+
+Success
+
+Soft pleasant chime.
+
+Tap
+
+Very subtle click.
+
+Call starting
+
+Short ascending tone.
+
+Error
+
+Two-note low tone.
+
+Incoming call
+
+Recognizable ringtone.
+
+Battery warning
+
+Short warning tone + Telugu voice.
+
+Network loss
+
+Short sound + Telugu voice.
+
+Avoid:
+
+loud UI sounds
+gamification
+excessive notification sounds
+childish sounds
+
+The aesthetic should be:
+
+calm + premium + reassuring
+
+not “senior citizen toy app.”
+
+26. Haptics
+
+Use haptics as a second communication channel.
+
+Example:
+
+Normal tap
+
+Light haptic.
+
+Call initiated
+
+Medium haptic.
+
+Error
+
+Two short haptics.
+
+Incoming call
+
+Repeated rhythm synchronized with ringtone.
+
+Emergency
+
+Distinct repeated vibration.
+
+27. Premium visual design
+
+The biggest mistake would be making this look like an “elderly app.”
+
+Don't.
+
+Make it look like:
+
+Apple-level simplicity + premium family communication device.
+
+Design language
+enormous typography
+generous whitespace
+soft surfaces
+subtle depth
+restrained gradients
+high-quality photography
+carefully tuned motion
+minimal chrome
+no visual clutter
+Color system
+
+Don't use 12 colors.
+
+Use:
+
+Background
+Surface
+Primary
+Success
+Warning
+Critical
+Text
+Muted
+
+And semantic colors only where necessary.
+
+28. Suggested visual identity
+
+I would avoid a generic phone icon.
+
+Brand concept:
+
+Two speech/call waves forming a heart
+
+or:
+
+Two abstract faces connected by a communication arc.
+
+The logo should work at:
+
+24dp
+launcher icon
+splash screen
+notification
+app store listing
+
+No tiny details.
+
+29. App name
+
+For the product itself, I wouldn't use something technical like:
+
+SpeedDial Pro
+
+Possible conceptual direction:
+
+“Amma”
+
+Extremely memorable.
+
+Or a more neutral brand:
+
+“Maatlaadu”
+
+Meaning “speak/talk.”
+
+But branding should be tested separately from the product architecture.
+
+30. Admin mode
+
+This is where you configure everything.
+
+The mother should never see it accidentally.
+
+Possible access:
+
+Three-finger long press
+
+or:
+
+Long press app logo + PIN
+
+Admin dashboard:
+
+Contacts
+Voice
+Appearance
+Calling
+WhatsApp
+Notifications
+Battery alerts
+Network alerts
+Accessibility
+Backup
+Diagnostics
+31. Contact management
+
+Admin can:
+
++ Add person
+
+Fields:
+
+Photo
+Display label
+Relationship
+Phone number
+WhatsApp number
+Primary action
+WhatsApp audio enabled
+WhatsApp video enabled
+Emergency contact
+Voice pronunciation
+Position
+
+Example:
+
+Name:
+Santhosh
+
+Relationship:
+Son
+
+Photo:
+[photo]
+
+Phone:
+XXXXXXXXXX
+
+Primary:
+Phone
+
+WhatsApp:
+✓ Audio
+✓ Video
+32. Custom pronunciation
+
+This is a subtle but important feature.
+
+Names can be pronounced incorrectly by TTS.
+
+Admin should be able to specify:
+
+Display:
+Santhosh
+
+Voice pronunciation:
+సంతోష్
+
+Even better:
+
+Voice phrase:
+"సంతోష్‌కి ఫోన్ చేస్తున్నాను"
+
+This allows family members to customize how names sound.
+
+33. Voice settings
+
+Admin:
+
+Voice guidance
+   ON
+
+Voice volume
+   ███████░░
+
+Speak contact name
+   ON
+
+Speak battery status
+   ON
+
+Speak network status
+   ON
+
+Speak time
+   ON
+
+Speak errors
+   ON
+34. Smart home-screen status
+
+The top area should communicate:
+
+Time
+Day
+Battery
+Signal
+Internet
+
+without making the user interpret them.
+
+Example:
+
+       Good morning Amma
+
+       10:42 AM
+       Tuesday
+
+   📶 Phone signal: Good
+   🌐 Internet: Good
+   🔋 Battery: Good
+
+The words can be visually present for the family/admin, but the mother doesn't need to read them.
+
+35. One giant “Tell me” button
+
+I would add this.
+
+┌──────────────────────────────┐
+│                              │
+│          🔊                  │
+│       చెప్పు                 │
+│                              │
+└──────────────────────────────┘
+
+Tap:
+
+“ఇప్పుడు ఉదయం పది గంటల నలభై రెండు నిమిషాలు. బ్యాటరీ ఎనభై రెండు శాతం ఉంది. ఫోన్ సిగ్నల్ బాగుంది. ఇంటర్నెట్ ఉంది.”
+
+This gives her a single mental model:
+
+If I don't know something, press this.
+
+36. Optional voice command mode
+
+Later:
+
+“సంతోష్‌కి ఫోన్ చెయ్యి.”
+
+The app recognizes:
+
+Speech
+ ↓
+Telugu ASR
+ ↓
+Contact resolver
+ ↓
+Confirmation
+ ↓
+Call
+
+But do not make voice recognition a dependency for v1.
+
+Voice commands introduce:
+
+speech recognition errors
+background microphone complexity
+privacy concerns
+battery consumption
+noisy environments
+false activation
+
+The app should work perfectly without it.
+
+37. Offline-first architecture
+
+This application should function without internet.
+
+Local data:
+
+contacts
+photos
+preferences
+voice phrase mappings
+ordering
+settings
+
+should all be local.
+
+Internet is only necessary for:
+
+WhatsApp
+online speech recognition, if used
+optional backup
+38. Recommended tech stack
+
+For this project I would stay aggressively native.
+
+Language
+
+Kotlin
+
+UI
+
+Jetpack Compose
+
+Design system
+
+Custom Compose design system + Material 3 foundation
+
+Not stock Material UI everywhere.
+
+Material gives you infrastructure.
+
+Your product needs its own visual language.
+
+Architecture
+Presentation
+     ↓
+ViewModel
+     ↓
+Use Cases
+     ↓
+Repositories
+     ↓
+Data sources
+
+Use:
+
+UDF / MVI-style state management
+
+rather than random mutable UI state.
+
+39. Core Android stack
+Kotlin
+Jetpack Compose
+Material 3
+Navigation
+Hilt
+Coroutines
+Flow
+Room
+DataStore
+Coil
+Android Telecom
+Text-to-Speech
+ConnectivityManager
+TelephonyManager
+BatteryManager
+WorkManager
+AlarmManager where justified
+Notifications
+Macrobenchmark
+Baseline Profiles
+JUnit
+Compose UI testing
+UI Automator
+
+This is deliberately Kotlin/Android-native.
+
+40. Why Compose is appropriate
+
+Compose is particularly suitable here because you need:
+
+custom large contact surfaces
+animations
+adaptive layouts
+custom status components
+accessibility semantics
+state-driven UI
+polished transitions
+
+But Compose alone does not guarantee fluidity.
+
+You need performance engineering.
+
+Android specifically recommends Baseline Profiles for improving critical Compose journeys, and Macrobenchmark is the recommended mechanism for measuring startup and UI performance.
+
+41. Performance target
+
+Your critical journey:
+
+Unlock phone
+↓
+tap app
+↓
+home appears
+↓
+tap person
+↓
+call starts
+
+should feel instantaneous.
+
+Target:
+
+Cold start
+
+< 1 second perceived startup
+
+Home rendering
+
+< 300–500 ms perceived
+
+Contact tap response
+
+< 100 ms visual feedback
+
+Animation
+
+60 FPS target.
+
+120 FPS where device supports it.
+
+But don't chase 120 FPS at the expense of battery.
+
+42. Animation philosophy
+
+Don't use animation everywhere.
+
+Use animation to communicate:
+
+State
+hierarchy
+cause → effect
+
+Example:
+
+Tap contact:
+
+photo
+ ↓
+slight scale
+ ↓
+ring expands
+ ↓
+call state
+
+Avoid:
+
+parallax
+floating particles
+excessive blur
+continuous animated gradients
+complicated Lottie sequences
+
+Those are visual vanity and battery waste.
+
+43. Low-end device strategy
+
+This matters more than “Apple-grade animations.”
+
+Avoid:
+
+large unoptimized images
+continuous GPU effects
+heavy blur
+infinite animations
+expensive shadows
+huge compositing layers
+unnecessary recompositions
+
+Use:
+
+appropriately resized photos
+image caching
+stable Compose state
+lazy layouts
+derived state
+minimal recomposition
+hardware-friendly animation
+baseline profiles
+R8
+Macrobenchmark
+
+Android's Compose performance guidance specifically emphasizes measuring real performance and using Baseline Profiles for critical journeys.
+
+44. Accessibility
+
+This isn't optional.
+
+Every interactive element should have:
+
+semantic role
+meaningful content description
+correct state
+action description
+
+Compose provides semantics specifically for accessibility and testing.
+
+Android's current app-quality guidance also expects touch targets of at least 48dp and appropriate contrast ratios.
+
+For your app:
+
+Minimum touch target
+
+64dp
+
+Preferred primary touch target
+
+80–120dp
+
+because your target user benefits from huge controls.
+
+45. Typography
+
+Don't use tiny typography.
+
+Recommended visual hierarchy:
+
+Time:
+48–64sp
+
+Primary contact label:
+24–30sp
+
+Status:
+18–22sp
+
+Secondary information:
+16–18sp
+
+Never-important microcopy:
+avoid
+
+The exact size should adapt to screen dimensions and font scale.
+
+46. Orientation
+
+Prefer:
+
+Portrait
+
+for the primary experience.
+
+Landscape should not break the UI.
+
+If the device rotates:
+
+reflow contacts
+preserve state
+don't restart voice guidance
+don't trigger calls again
+47. System bars
+
+The app should feel like a dedicated appliance.
+
+Use:
+
+edge-to-edge
+carefully controlled status/navigation bars
+gesture navigation compatibility
+contrast-aware system bar appearance
+
+But don't hide system navigation in a way that traps the user.
+
+48. Notifications
+
+Use notifications only for information that matters.
+
+Examples:
+
+Battery
+
+“బ్యాటరీ చాలా తక్కువగా ఉంది.”
+
+Network
+
+“ఫోన్ సిగ్నల్ లేదు.”
+
+Missed call
+
+“సంతోష్ ఫోన్ చేశాడు.”
+
+WhatsApp missed call
+
+If reliably detectable through supported system behavior:
+
+“సంతోష్ వాట్సాప్‌లో ఫోన్ చేశాడు.”
+
+Do not flood the notification shade.
+
+49. Notification permission
+
+Android 13+ requires the POST_NOTIFICATIONS runtime permission for normal notifications.
+
+Do not ask for it during onboarding with five other permissions.
+
+Ask when explaining:
+
+“మీ అమ్మకు ఫోన్ మిస్ అయితే చెప్పడానికి ఈ అనుమతి అవసరం.”
+
+Then request it.
+
+50. Background processing
+
+The app should not run an unnecessary permanent background service.
+
+That's a common amateur mistake.
+
+Use:
+
+WorkManager
+
+for deferred background work.
+
+Use system callbacks for:
+
+battery
+connectivity
+phone state
+
+Use foreground services only when a legitimate active user-visible operation requires one.
+
+Android restricts background foreground-service starts, so designing around “always-running service” is a bad architecture.
+
+51. Battery architecture
+
+Target:
+
+Essentially zero meaningful battery drain while idle.
+
+The app should not continuously poll:
+
+battery every second
+network every second
+time every second
+
+Instead:
+
+Time
+
+UI updates only while visible.
+
+Battery
+
+listen to appropriate system state.
+
+Connectivity
+
+use Android connectivity callbacks.
+
+Calls
+
+use Telecom/system events where applicable.
+
+52. Exact alarms
+
+Don't add exact alarms simply because you can.
+
+If you later add reminders, use exact alarms only where precise user-facing timing genuinely requires them. Android explicitly restricts and controls exact-alarm access.
+
+For this app's core speed-dial functionality:
+
+You don't need exact alarms.
+
+53. Data model
+
+Core entities:
+
+Contact
+ContactAction
+VoicePhrase
+AppSettings
+VoiceSettings
+BatterySettings
+NetworkSettings
+NotificationSettings
+EmergencyContact
+CallPreference
+
+Example:
+
+Contact
+ ├── id
+ ├── displayName
+ ├── relationship
+ ├── photoUri
+ ├── phoneNumber
+ ├── whatsappNumber
+ ├── primaryAction
+ ├── whatsappAudioEnabled
+ ├── whatsappVideoEnabled
+ ├── pronunciation
+ ├── sortOrder
+ └── isEmergencyContact
+54. State machine
+
+This is important.
+
+Don't implement calling with scattered Boolean variables like:
+
+isCalling
+isLoading
+hasError
+isConnected
+
+That creates impossible states.
+
+Use explicit states:
+
+Idle
+
+ContactSelected
+
+PreparingCall
+
+Calling
+
+Connected
+
+CallFailed
+
+NoNetwork
+
+NoInternet
+
+WhatsAppUnavailable
+
+PermissionMissing
+
+UnknownFailure
+
+Then each state has:
+
+visual representation
+audio representation
+haptic representation
+recovery action
+55. Example: phone call state machine
+IDLE
+ ↓
+CONTACT_SELECTED
+ ↓
+CHECKING
+ ├── no SIM → NO_SIM
+ ├── permission missing → PERMISSION_REQUIRED
+ ├── valid → CALLING
+ ↓
+CALLING
+ ├── answered → CONNECTED
+ ├── rejected → ENDED
+ ├── failed → CALL_FAILED
+ └── disconnected → ENDED
+
+This is vastly more robust than trying to patch edge cases afterward.
+
+56. Edge-case matrix
+
+You explicitly asked to eliminate edge cases.
+
+You can't literally eliminate every edge case. That's impossible.
+
+What you can do is design every known failure mode intentionally.
+
+SIM
+no SIM
+SIM disabled
+SIM changed
+dual SIM
+preferred SIM changed
+roaming
+no service
+emergency-only service
+Internet
+Wi-Fi connected but no internet
+mobile data unavailable
+captive portal
+airplane mode
+poor connectivity
+network switching during call
+WhatsApp
+not installed
+outdated
+number not registered
+contact not found
+WhatsApp disabled
+WhatsApp offline
+user logged out
+WhatsApp launches but target unavailable
+Phone
+contact number missing
+invalid number
+permission revoked
+another call active
+call waiting
+Bluetooth connected
+headset connected
+speaker routing changed
+phone locked
+DND enabled
+Device
+low RAM
+battery saver
+thermal throttling
+orientation change
+process killed
+app restored
+device rebooted
+timezone changed
+locale changed
+font scale changed
+57. Dual-SIM support
+
+This is particularly important in India.
+
+Admin settings:
+
+Preferred SIM
+
+○ Ask every time
+● SIM 1
+○ SIM 2
+
+For your mother:
+
+Never ask every time unless absolutely necessary.
+
+Choose a default SIM.
+
+If that SIM becomes unavailable:
+
+“ఈ సిమ్ అందుబాటులో లేదు. మరో సిమ్‌తో ఫోన్ చేయాలా?”
+
+Then:
+
+YES
+NO
+58. Contact resolution
+
+Never rely only on the visible name.
+
+Maintain:
+
+Contact ID
+Phone number
+Normalized number
+WhatsApp number
+Photo
+Relationship
+
+Phone numbers should be normalized before matching.
+
+Especially important for:
+
++91
+0-prefix numbers
+spaces
+hyphens
+duplicate contacts
+59. Privacy
+
+This app is handling:
+
+phone numbers
+photographs
+call information
+potentially contact data
+
+Therefore:
+
+Local-first
+
+No cloud backend in v1.
+
+No analytics containing contact names/numbers.
+
+No uploading photos.
+
+No advertising.
+
+No tracking.
+
+No unnecessary permissions.
+
+This also makes the app simpler.
+
+60. Permissions
+
+Request only what is actually needed.
+
+Potential permissions/features:
+
+READ_CONTACTS
+CALL_PHONE
+READ_PHONE_STATE
+POST_NOTIFICATIONS
+
+Potentially other permissions depending on the exact implementation.
+
+Don't request:
+
+location
+microphone
+camera
+
+unless a feature actually requires them.
+
+And don't request microphone merely because you might add voice commands later.
+
+61. Onboarding
+
+The mother should not configure the application.
+
+The family member does.
+
+Step 1
+Welcome
+Step 2
+Who will use this phone?
+
+[ Amma ]
+Step 3
+Choose important people
+Step 4
+
+Add:
+
+Son
+Daughter
+Husband
+Brother
+Doctor
+Step 5
+Choose default calling method
+Step 6
+Set emergency contact
+Step 7
+Test voice
+Step 8
+Test call
+Step 9
+Done
+62. Guided setup test
+
+This is excellent for reliability.
+
+At the end:
+
+Test 1
+
+“ఇప్పుడు సిగ్నల్ చెక్ చేస్తున్నాం.”
+
+Test 2
+
+“ఇప్పుడు బ్యాటరీ చెక్ చేస్తున్నాం.”
+
+Test 3
+
+“ఇప్పుడు సంతోష్‌కి ఫోన్ చేసే బటన్ పరీక్షించండి.”
+
+Family member taps.
+
+Test 4
+
+“ఇప్పుడు వాట్సాప్ పరీక్షించండి.”
+
+This catches configuration mistakes before handing the phone to her.
+
+63. Diagnostics screen
+
+Admin only.
+
+Device
+
+✓ SIM available
+✓ Phone permission
+✓ Contacts permission
+✓ Notifications
+✓ Telugu voice
+✓ WhatsApp installed
+✓ Internet
+✓ Default SIM
+
+Battery
+82%
+
+Signal
+Good
+
+Last successful phone call
+10:31 AM
+
+Last WhatsApp launch
+Yesterday
+
+This will save you enormous debugging time.
+
+64. Crash resilience
+
+If something breaks:
+
+Never show a raw exception.
+
+Never:
+
+NullPointerException
+
+Instead:
+
+“ఏదో సమస్య వచ్చింది. మళ్లీ ప్రయత్నించండి.”
+
+And provide:
+
+TRY AGAIN
+
+If critical:
+
+“సాధారణ ఫోన్ యాప్‌ను తెరవండి.”
+
+Fallback should always exist.
+
+65. The fallback philosophy
+
+Every action needs:
+
+Primary path
+Amma App → desired action
+Fallback path
+Amma App → Android system app
+
+For example:
+
+WhatsApp fails:
+
+"వాట్సాప్ తెరవలేకపోయాను."
+
+Then:
+
+“సాధారణ ఫోన్ చేయాలా?”
+
+This prevents dead ends.
+
+66. Testing strategy
+
+This app should be tested much more aggressively than a normal utility.
+
+Unit tests
+call routing
+contact resolution
+battery interpretation
+network state mapping
+voice phrase resolution
+state machines
+UI tests
+
+Every major screen.
+
+Accessibility tests
+TalkBack
+content descriptions
+semantic actions
+large fonts
+high contrast
+Integration tests
+phone call
+permissions
+contacts
+WhatsApp availability
+notifications
+Macrobenchmark
+
+Test:
+
+cold start
+home rendering
+contact scrolling
+contact selection
+call launch
+admin opening
+
+Android recommends Macrobenchmark for startup and complex UI interactions and using it to generate/validate Baseline Profiles.
+
+67. Device testing matrix
+
+Don't test only your flagship.
+
+Minimum:
+
+Low-end
+
+4 GB RAM / budget chipset
+
+Mid-range
+
+6–8 GB RAM
+
+Samsung
+
+One current Galaxy
+
+Xiaomi/Redmi
+
+One current device
+
+Motorola
+
+One device
+
+Pixel
+
+One current device
+
+And test:
+
+Android 12
+Android 13
+Android 14
+Android 15
+Android 16+
+
+with the final supported range determined by your release strategy.
+
+68. Production quality gates
+
+The application isn't ready when:
+
+“It works on my phone.”
+
+Release only when:
+
+Performance
+no obvious jank
+acceptable cold startup
+no memory leaks
+no ANRs
+no excessive battery usage
+UX
+mother can perform core tasks without assistance
+no accidental calls
+no confusing dialogs
+no dead ends
+Accessibility
+large touch targets
+meaningful semantics
+high contrast
+TalkBack compatibility
+Reliability
+permissions revoked
+network unavailable
+WhatsApp unavailable
+SIM unavailable
+app process killed
+reboot
+battery saver
+
+all recover correctly.
+
+69. The five critical user journeys
+
+These should become your Baseline Profile + Macrobenchmark journeys.
+
+Journey A — Normal call
+Launch
+↓
+See family
+↓
+Tap son
+↓
+Call
+↓
+Connected
+Journey B — WhatsApp audio
+Launch
+↓
+Tap daughter
+↓
+WhatsApp audio
+↓
+WhatsApp opens
+Journey C — WhatsApp video
+Launch
+↓
+Tap daughter
+↓
+WhatsApp video
+↓
+WhatsApp opens
+Journey D — Understand phone status
+Launch
+↓
+Tap "Tell me"
+↓
+Hear time
+↓
+Hear battery
+↓
+Hear signal
+↓
+Hear internet
+Journey E — Incoming call
+Incoming call
+↓
+Photo
+↓
+Voice says caller
+↓
+Answer
+↓
+Connected
+70. Navigation architecture
+
+Don't build 15 screens.
+
+Mom mode
+Home
+ │
+ ├── Contact
+ │     └── Call action
+ │
+ ├── Tell Me
+ │
+ └── More contacts
+
+That's basically it.
+
+Admin mode
+Admin Home
+ │
+ ├── Contacts
+ ├── Calling
+ ├── Voice
+ ├── Notifications
+ ├── Appearance
+ ├── Accessibility
+ └── Diagnostics
+
+This separation is fundamental.
+
+71. Screen inventory
+
+Production v1:
+
+Splash
+Family setup
+Permission setup
+Voice setup
+Home
+Contact detail/action chooser
+Call state
+Incoming call
+More contacts
+Tell Me
+Admin authentication
+Admin dashboard
+Contact editor
+Voice settings
+Calling settings
+Notification settings
+Appearance settings
+Accessibility settings
+Diagnostics
+Recovery/error screen
+
+That's enough.
+
+Do not add unnecessary screens.
+
+72. Visual states
+
+Every major component needs:
+
+Default
+Pressed
+Focused
+Disabled
+Loading
+Success
+Error
+Offline
+Permission missing
+Unavailable
+
+This is how you get something that actually feels finished.
+
+73. Design tokens
+
+Create a central design system:
+
+AmmaColors
+AmmaTypography
+AmmaSpacing
+AmmaShapes
+AmmaElevation
+AmmaMotion
+AmmaDimensions
+AmmaIcons
+AmmaAccessibility
+
+Never scatter:
+
+padding = 17.dp
+cornerRadius = 23.dp
+
+throughout the codebase.
+
+74. Motion system
+
+Define:
+
+Instant
+Fast
+Normal
+Slow
+
+Example conceptual timings:
+
+Instant:
+~100ms
+
+Fast:
+~150–200ms
+
+Normal:
+~250–300ms
+
+Slow:
+~400ms
+
+Critical communication actions should feel immediate.
+
+75. What NOT to build
+
+This is important.
+
+Don't add:
+
+social feed
+chat
+advertisements
+unnecessary account system
+cloud login
+gamification
+fancy animated backgrounds
+weather
+news
+AI chatbot on the home screen
+complicated calendar
+giant settings menu
+contact search requiring typing
+tiny text
+swipe-only actions
+hamburger navigation
+unnecessary onboarding
+
+Every feature competes with the core objective.
+
+76. Product architecture
+
+The final architecture should look roughly like:
+
+                    ┌───────────────────┐
+                    │    Amma UI        │
+                    │   Jetpack Compose │
+                    └─────────┬─────────┘
+                              │
+                         UI State
+                              │
+                    ┌─────────▼─────────┐
+                    │    ViewModels      │
+                    └─────────┬─────────┘
+                              │
+                         Use Cases
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+        ▼                     ▼                     ▼
+ Contact Repository     Calling Engine       Voice Engine
+        │                     │                     │
+        ▼                     ▼                     ▼
+      Room              Android Telecom       Android TTS
+        │                     │
+        ▼                     ▼
+ Contact/photos          Phone system
+
+                              │
+                    ┌─────────▼─────────┐
+                    │ Connectivity       │
+                    │ Battery            │
+                    │ Notifications      │
+                    │ WhatsApp launcher  │
+                    └────────────────────┘
+77. Suggested module structure
+
+Eventually:
+
+:app
+
+:core
+  :ui
+  :designsystem
+  :common
+  :model
+  :database
+  :permissions
+  :voice
+  :telecom
+  :connectivity
+
+:feature
+  :home
+  :contacts
+  :calling
+  :incomingcall
+  :status
+  :admin
+  :settings
+  :diagnostics
+
+:benchmark
+
+This gives you enough separation without turning a small application into a ridiculous 40-module architecture.
+
+78. Security model
+
+Admin functionality should require:
+
+PIN
+
+or another deliberate authentication mechanism.
+
+Mom mode should have no access to:
+
+delete contacts
+change phone numbers
+modify calling behavior
+disable voice guidance
+reset application
+change emergency contact
+
+This protects against accidental changes.
+
+79. Backup
+
+Don't make cloud backup a v1 dependency.
+
+Instead:
+
+Export configuration
+
+Family can export:
+
+contacts
+settings
+voice configuration
+
+Then import on another phone.
+
+Photos can be included if implemented securely.
+
+Later you can add encrypted cloud backup.
+
+80. The actual MVP
+
+If you want this shipped rather than endlessly designed, v1 should contain only:
+
+Core
+family contact grid
+contact photos
+one-tap normal call
+WhatsApp audio launch
+WhatsApp video launch
+Telugu TTS
+time
+date/day
+battery
+phone signal
+internet status
+Tell Me button
+incoming normal-call experience
+admin contact configuration
+emergency contact
+large UI
+haptics
+accessibility
+offline operation
+
+That's the product.
+
+81. Phase 2
+
+Then:
+
+advanced WhatsApp handling where officially supported
+voice commands
+missed-call voice announcements
+configurable reminders
+medication reminders
+family notification system
+remote configuration
+encrypted backup
+caregiver dashboard
+call history
+smart fallback routing
+82. Phase 3
+
+Potentially:
+
+Family caregiver companion
+
+A separate admin application could let family manage:
+
+Contacts
+Photos
+Call preferences
+Reminders
+Battery warnings
+Network warnings
+Voice settings
+Emergency contact
+
+remotely.
+
+But do not put this complexity into the mother's application.
+
+83. The most important UX test
+
+Forget conventional usability testing.
+
+Sit beside your mother.
+
+Give her the phone.
+
+Do not explain anything.
+
+Ask:
+
+“సంతోష్‌కి ఫోన్ చెయ్యి.”
+
+Observe.
+
+If she:
+
+looks for a menu
+searches for text
+asks what a button means
+hesitates
+presses the wrong person
+doesn't understand the call state
+
+the design failed.
+
+Fix the interface.
+
+Then repeat.
+
+Do the same for:
+
+“ఇప్పుడు టైమ్ ఎంత?”
+
+“బ్యాటరీ ఎంత ఉంది?”
+
+“సిగ్నల్ ఉందా?”
+
+“సంతోష్‌కి వాట్సాప్ వీడియో కాల్ చెయ్యి.”
+
+That is your real acceptance test.
+
+84. Beginner example
+
+Imagine the phone has four people:
+
+       SON          DAUGHTER
+
+      [photo]        [photo]
+
+
+       HUSBAND       BROTHER
+
+      [photo]        [photo]
+
+Your mother wants to call her son.
+
+She:
+
+opens app → taps son's photo
+
+The app says:
+
+“సంతోష్‌కి ఫోన్ చేస్తున్నాను.”
+
+Phone call starts.
+
+No reading.
+
+No number.
+
+No searching.
+
+No menus.
+
+That's the product.
+
+85. Experienced-user example
+
+The deeper architecture is:
+
+Contact tap
+    ↓
+ContactActionResolver
+    ↓
+CallCapabilityResolver
+    ↓
+ConnectivityState
+    ↓
+PreferredTransport
+    ↓
+Telecom / WhatsApp launcher
+    ↓
+CallStateMachine
+    ↓
+VoiceGuidanceEvent
+    ↓
+TTS / recorded Telugu audio
+    ↓
+HapticFeedback
+    ↓
+UI state
+
+So a failure like:
+
+WhatsApp requested
++
+Internet unavailable
+
+doesn't become:
+
+“Nothing happened.”
+
+It becomes:
+
+ConnectivityState.NO_INTERNET
+        ↓
+Voice:
+"ఇంటర్నెట్ లేదు."
+        ↓
+Fallback:
+"సాధారణ ఫోన్ చేయాలా?"
+
+That is the difference between a prototype and a production system.
+
+86. Final technology recommendation
+Layer	Choice
+Language	Kotlin
+UI	Jetpack Compose
+Design	Custom design system + Material 3 foundation
+Architecture	Clean Architecture + UDF/MVI
+DI	Hilt
+Async	Coroutines + Flow
+Database	Room
+Preferences	DataStore
+Images	Coil
+Navigation	AndroidX Navigation
+Calling	Android Telecom / Intent APIs
+WhatsApp	Supported external-app launching only
+Voice	Android TTS + optional recorded Telugu phrases
+Connectivity	ConnectivityManager
+Telephony	TelephonyManager / Telecom
+Battery	BatteryManager/system callbacks
+Notifications	Android Notifications
+Background	WorkManager where appropriate
+Performance	Baseline Profiles + Macrobenchmark
+Testing	JUnit + Compose UI + UI Automator
+Build	Gradle Version Catalog
+Language	Telugu-first UX
+Backend	None for v1
+Cloud	None for v1
+87. One architectural decision I would make immediately
+
+I would not call this a speed-dial app internally.
+
+Call the product architecture:
+
+Voice-First Communication Launcher
+
+because its responsibility is broader:
+
+                AMMA
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+   COMMUNICATION          STATUS
+        │                   │
+   Phone                 Time
+   WhatsApp              Date
+   Video                 Battery
+   Emergency             Signal
+                         Internet
+        │                   │
+        └─────────┬─────────┘
+                  │
+          Telugu Voice Layer
+                  │
+        Visual + Audio + Haptic
+
+That is the right product model.
+
+And one more important point: don't try to achieve “Apple-grade” by adding visual complexity. For this product, Apple-grade means the opposite: ruthless reduction, precise typography, excellent motion, immediate feedback, predictable behavior, accessibility, and almost no cognitive overhead.
+
+The Android platform already gives you the primitives needed for a very polished implementation; the hard part is making the interaction model brutally simple and handling the failure states correctly. Android's current accessibility and performance guidance supports the same direction: large touch targets, semantics, contrast, measurement with Macrobenchmark, and Baseline Profiles for critical flows.
+
+If you build this in Kotlin + Jetpack Compose, I would treat the next deliverable as a full implementation PRD + screen-by-screen UX specification + design system + state machines + permission matrix + Android API mapping + testing matrix + project structure, rather than jumping directly into UI code. That will prevent the usual “beautiful prototype that collapses under real Android edge cases” problem.
