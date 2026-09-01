@@ -40,6 +40,7 @@ class AdminViewModel : ViewModel() {
     private val authRepo = app.authRepository
     private val firestoreSync = app.firestoreSyncEngine
     private val r2Manager = app.r2StorageManager
+    private val googleDriveManager = app.googleDriveStorageManager
 
     private val _editingContact = MutableStateFlow<Contact?>(null)
     private val _isAddContactOpen = MutableStateFlow(false)
@@ -101,14 +102,16 @@ class AdminViewModel : ViewModel() {
             contactRepo.saveContact(contact)
             closeContactDialog()
 
-            // 2. If authenticated, upload photo to Cloudflare R2 and sync to Firestore
+            // 2. If authenticated, upload photo to Google Drive (or R2) and sync to Firestore
             val currentUser = authRepo.currentUserId
             if (currentUser != null) {
                 var finalContact = contact
                 val photoUri = contact.photoUri
 
                 if (!photoUri.isNullOrBlank() && !photoUri.startsWith("http")) {
-                    val cloudUrl = r2Manager.uploadContactPhoto(photoUri, contact.id, currentUser)
+                    val cloudUrl = googleDriveManager.uploadContactPhoto(photoUri, contact.id)
+                        ?: r2Manager.uploadContactPhoto(photoUri, contact.id, currentUser)
+
                     if (cloudUrl != null) {
                         finalContact = contact.copy(photoUri = cloudUrl)
                         contactRepo.saveContact(finalContact)

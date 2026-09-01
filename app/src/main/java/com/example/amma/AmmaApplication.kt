@@ -3,6 +3,7 @@ package com.example.amma
 import android.app.Application
 import com.example.amma.cloud.auth.AuthRepository
 import com.example.amma.cloud.auth.AuthState
+import com.example.amma.cloud.drive.GoogleDriveStorageManager
 import com.example.amma.cloud.firestore.FirestoreSyncEngine
 import com.example.amma.cloud.r2.R2StorageManager
 import com.example.amma.data.ContactRepository
@@ -47,6 +48,9 @@ class AmmaApplication : Application() {
     lateinit var r2StorageManager: R2StorageManager
         private set
 
+    lateinit var googleDriveStorageManager: GoogleDriveStorageManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -58,10 +62,11 @@ class AmmaApplication : Application() {
         hapticsManager = HapticsManager(this)
         soundCueManager = SoundCueManager()
 
-        // Cloud Integrations: Auth, Firestore & Cloudflare R2
+        // Cloud Integrations: Auth, Firestore, Google Drive & Cloudflare R2
         authRepository = AuthRepository(this)
         firestoreSyncEngine = FirestoreSyncEngine(this, contactRepository, applicationScope)
         r2StorageManager = R2StorageManager(this)
+        googleDriveStorageManager = GoogleDriveStorageManager(this)
 
         // Automatically start Firestore sync when authenticated
         applicationScope.launch {
