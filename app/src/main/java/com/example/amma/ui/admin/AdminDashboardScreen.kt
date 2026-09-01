@@ -1330,9 +1330,7 @@ private fun DiagnosticsTab(
                                     onClick = { otaManager.installApk(status.apkFile) },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .bounceClick(scaleDown = 0.95f) {
-                                            otaManager.installApk(status.apkFile)
-                                        },
+                                        .bounceClick(),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
                                 ) {
