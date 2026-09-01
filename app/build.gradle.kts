@@ -11,20 +11,32 @@ android {
         applicationId = "com.example.amma"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     signingConfigs {
+        create("releaseSigning") {
+            storeFile = file("caretouch.keystore")
+            storePassword = "caretouch123"
+            keyAlias = "caretouch"
+            keyPassword = "caretouch123"
+        }
         getByName("debug") {
-            // Standard Android debug signing configuration
+            storeFile = file("caretouch.keystore")
+            storePassword = "caretouch123"
+            keyAlias = "caretouch"
+            keyPassword = "caretouch123"
         }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("releaseSigning")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

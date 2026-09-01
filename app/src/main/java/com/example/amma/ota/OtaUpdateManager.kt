@@ -132,9 +132,16 @@ class OtaUpdateManager(private val context: Context) {
     }
 
     suspend fun downloadAndInstall(info: UpdateInfo) {
+        // Immediate UI response with 0ms delay
+        _updateStatus.value = UpdateStatus.Downloading(0, 0.0, info.apkSizeMb)
+
         withContext(Dispatchers.IO) {
             try {
-                val otaDir = File(context.cacheDir, "ota").apply { mkdirs() }
+                val otaDir = File(context.cacheDir, "ota").apply {
+                    mkdirs()
+                    // Clean up any stale APKs
+                    listFiles()?.forEach { if (it.name.endsWith(".apk")) it.delete() }
+                }
                 val targetFile = File(otaDir, "CareTouch-v${info.latestVersion}.apk")
 
                 val request = Request.Builder()
@@ -154,22 +161,29 @@ class OtaUpdateManager(private val context: Context) {
                 }
 
                 val contentLength = body.contentLength().takeIf { it > 0 } ?: info.apkSizeBytes
-                val inputStream = body.byteStream()
-                val outputStream = FileOutputStream(targetFile)
+                val inputStream = body.byteStream().buffered(64 * 1024)
+                val outputStream = FileOutputStream(targetFile).buffered(64 * 1024)
 
-                val buffer = ByteArray(8 * 1024)
+                val buffer = ByteArray(64 * 1024)
                 var bytesRead: Int
                 var totalBytesRead = 0L
+                var lastEmitTime = 0L
+                var lastEmitPercent = -1
 
                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                     outputStream.write(buffer, 0, bytesRead)
                     totalBytesRead += bytesRead
 
-                    val percent = if (contentLength > 0) ((totalBytesRead * 100) / contentLength).toInt() else 0
+                    val percent = if (contentLength > 0) ((totalBytesRead * 100) / contentLength).toInt().coerceIn(0, 100) else 0
                     val downloadedMb = totalBytesRead / (1024.0 * 1024.0)
                     val totalMb = contentLength / (1024.0 * 1024.0)
 
-                    _updateStatus.value = UpdateStatus.Downloading(percent, downloadedMb, totalMb)
+                    val now = System.currentTimeMillis()
+                    if (percent != lastEmitPercent && (now - lastEmitTime >= 40 || percent == 100)) {
+                        lastEmitTime = now
+                        lastEmitPercent = percent
+                        _updateStatus.value = UpdateStatus.Downloading(percent, downloadedMb, totalMb)
+                    }
                 }
 
                 outputStream.flush()
@@ -183,7 +197,7 @@ class OtaUpdateManager(private val context: Context) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error downloading OTA update", e)
-                _updateStatus.value = UpdateStatus.Error("Download failed: ${e.localizedMessage}")
+                _updateStatus.value = UpdateStatus.Error("Download failed: ${e.localizedMessage ?: "Network error"}")
             }
         }
     }
@@ -209,13 +223,30 @@ class OtaUpdateManager(private val context: Context) {
 
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(contentUri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
+
+            val resolveInfos = context.packageManager.queryIntentActivities(installIntent, 0)
+            for (resolveInfo in resolveInfos) {
+                context.grantUriPermission(
+                    resolveInfo.activityInfo.packageName,
+                    contentUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
             context.startActivity(installIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Error triggering APK installer", e)
             _updateStatus.value = UpdateStatus.Error("Installation trigger failed: ${e.localizedMessage}")
         }
+    }
+
+    fun resetToIdle() {
+        _updateStatus.value = UpdateStatus.Idle
     }
 
     private fun isVersionNewer(latest: String, current: String): Boolean {

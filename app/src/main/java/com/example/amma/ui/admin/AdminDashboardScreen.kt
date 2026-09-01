@@ -1187,8 +1187,14 @@ private fun DiagnosticsTab(
                                             otaManager.downloadAndInstall(status.info)
                                         }
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .bounceClick(scaleDown = 0.95f) {
+                                            coroutineScope.launch {
+                                                otaManager.downloadAndInstall(status.info)
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
                                 ) {
                                     Icon(
@@ -1203,50 +1209,142 @@ private fun DiagnosticsTab(
                             }
                         }
                         is com.example.amma.ota.UpdateStatus.Downloading -> {
+                            val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = (status.progressPercent / 100f).coerceIn(0f, 1f),
+                                animationSpec = androidx.compose.animation.core.tween(
+                                    durationMillis = 180,
+                                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                                ),
+                                label = "ota_download_progress"
+                            )
+
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(AmmaSurfaceElevated)
+                                    .border(1.dp, Color(0xFF0A84FF).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                                     .padding(14.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color(0xFF0A84FF),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (status.progressPercent >= 100) "Verifying & Installing..." else "Downloading Update...",
+                                            fontSize = 13.sp,
+                                            color = AmmaTextPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        text = "${status.progressPercent}%",
+                                        fontSize = 14.sp,
+                                        color = if (status.progressPercent >= 100) AmmaGreenBright else Color(0xFF0A84FF),
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Custom Smooth Gradient Progress Bar
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF2C2C2E))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(fraction = animatedProgress.coerceAtLeast(0.02f))
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(
+                                                        Color(0xFF007AFF),
+                                                        Color(0xFF5856D6),
+                                                        Color(0xFF34C759)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Downloading OTA Update...", fontSize = 13.sp, color = AmmaTextPrimary, fontWeight = FontWeight.Bold)
-                                    Text("${status.progressPercent}%", fontSize = 13.sp, color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = String.format("%.1f MB / %.1f MB", status.downloadedMb, status.totalMb),
+                                        fontSize = 12.sp,
+                                        color = AmmaTextSecondary
+                                    )
+                                    Text(
+                                        text = "High-Speed Stream",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF0A84FF).copy(alpha = 0.8f),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                LinearProgressIndicator(
-                                    progress = { status.progressPercent / 100f },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = Color(0xFF0A84FF),
-                                    trackColor = Color(0xFF2C2C2E)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = String.format("%.1f MB / %.1f MB", status.downloadedMb, status.totalMb),
-                                    fontSize = 12.sp,
-                                    color = AmmaTextSecondary
-                                )
                             }
                         }
                         is com.example.amma.ota.UpdateStatus.ReadyToInstall -> {
-                            Button(
-                                onClick = { otaManager.installApk(status.apkFile) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1C2B20))
+                                    .padding(14.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SystemUpdate,
-                                    contentDescription = null,
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Install Downloaded Update", fontWeight = FontWeight.Bold, color = Color.Black)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF34C759),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Download Complete",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color.White
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Button(
+                                    onClick = { otaManager.installApk(status.apkFile) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .bounceClick(scaleDown = 0.95f) {
+                                            otaManager.installApk(status.apkFile)
+                                        },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34C759))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SystemUpdate,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Install Downloaded Update", fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                                }
                             }
                         }
                         is com.example.amma.ota.UpdateStatus.Error -> {
@@ -1269,10 +1367,11 @@ private fun DiagnosticsTab(
                                             otaManager.checkForUpdates()
                                         }
                                     },
-                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9F0A))
                                 ) {
-                                    Text("Retry", fontWeight = FontWeight.Bold, color = Color.Black)
+                                    Text("Retry Check", fontWeight = FontWeight.Bold, color = Color.Black)
                                 }
                             }
                         }
