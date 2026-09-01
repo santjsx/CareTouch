@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+import com.example.amma.cloud.auth.AuthState
+
 data class HomeUiState(
     val contacts: List<Contact> = emptyList(),
     val status: SystemStatus = SystemStatus(),
@@ -25,7 +27,9 @@ data class HomeUiState(
     val emergencyContact: Contact? = null,
     val callState: CallState = CallState.Idle,
     val isSpeaking: Boolean = false,
-    val showAdminAuth: Boolean = false
+    val showAdminAuth: Boolean = false,
+    val authState: AuthState = AuthState.Unauthenticated,
+    val showInitialLogin: Boolean = false
 )
 
 class HomeViewModel : ViewModel() {
@@ -37,18 +41,23 @@ class HomeViewModel : ViewModel() {
     private val callOrchestrator = app.callOrchestrator
     private val haptics = app.hapticsManager
     private val soundCues = app.soundCueManager
+    private val authRepo = app.authRepository
 
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
     private val _showAdminAuth = MutableStateFlow(false)
+    private val _dismissedInitialLogin = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         combine(contactRepo.contacts, statusEngine.status, contactRepo.settings) { contacts, status, settings ->
             Triple(contacts, status, settings)
         },
-        _callState,
-        voiceEngine.isSpeaking,
-        _showAdminAuth
-    ) { (contacts, status, settings), callState, isSpeaking, showAdmin ->
+        combine(_callState, voiceEngine.isSpeaking, _showAdminAuth) { callState, isSpeaking, showAdmin ->
+            Triple(callState, isSpeaking, showAdmin)
+        },
+        authRepo.authState,
+        _dismissedInitialLogin
+    ) { (contacts, status, settings), (callState, isSpeaking, showAdmin), authState, dismissed ->
+        val showInitial = !settings.hasCompletedInitialLogin && !dismissed && authState !is AuthState.Authenticated
         HomeUiState(
             contacts = contacts,
             status = status,
@@ -56,13 +65,33 @@ class HomeViewModel : ViewModel() {
             emergencyContact = contactRepo.getEmergencyContact(),
             callState = callState,
             isSpeaking = isSpeaking,
-            showAdminAuth = showAdmin
+            showAdminAuth = showAdmin,
+            authState = authState,
+            showInitialLogin = showInitial
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         HomeUiState()
     )
+
+    fun signInWithGoogle(context: android.content.Context) {
+        viewModelScope.launch {
+            val result = authRepo.signInWithGoogle(context)
+            if (result.isSuccess) {
+                val updated = contactRepo.settings.value.copy(hasCompletedInitialLogin = true)
+                contactRepo.saveSettings(updated)
+            }
+        }
+    }
+
+    fun dismissInitialLogin() {
+        _dismissedInitialLogin.value = true
+        viewModelScope.launch {
+            val updated = contactRepo.settings.value.copy(hasCompletedInitialLogin = true)
+            contactRepo.saveSettings(updated)
+        }
+    }
 
     fun onContactTap(contact: Contact) {
         haptics.callInitiated()

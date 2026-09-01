@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "113957510587",
+    "project_id": "caretouch25-f114e",
+    "storage_bucket": "caretouch25-f114e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:113957510587:android:496aa67ba10e73e973f89e",
+        "android_client_info": {
+          "package_name": "com.example.amma"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "113957510587-apbl2bj5m9u6mm3nitak0g5itl5bdcgh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.amma",
+            "certificate_hash": "52d1b507f0bb120332f6c800d71e16f5a4960da7"
+          }
+        },
+        {
+          "client_id": "113957510587-gucvc9db5c2qjhhi1mf5765raq6hsgf3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAo503PshcOeVUL5brq1-O4sE0DEnj670o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "113957510587-gucvc9db5c2qjhhi1mf5765raq6hsgf3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

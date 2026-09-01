@@ -11,5 +11,6 @@ data class AppSettings(
     val speechPitch: Float = 1.0f,
     val neuralVoice: String = "te-IN-ShrutiNeural", // Azure Neural Voice: Shruti (Female) or Mohan (Male)
     val emergencyContactId: String? = null,
-    val defaultSimSlot: Int = 0 // 0 for SIM 1, 1 for SIM 2
+    val defaultSimSlot: Int = 0, // 0 for SIM 1, 1 for SIM 2
+    val hasCompletedInitialLogin: Boolean = false
 )

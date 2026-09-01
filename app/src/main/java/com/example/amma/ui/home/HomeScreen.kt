@@ -49,6 +49,7 @@ import com.example.amma.theme.AmmaTextMuted
 import com.example.amma.theme.AmmaTextPrimary
 import com.example.amma.theme.AmmaTextSecondary
 import com.example.amma.ui.components.AdminPinDialog
+import com.example.amma.ui.components.CaregiverLoginSheet
 import com.example.amma.ui.components.ContactActionModal
 import com.example.amma.ui.components.ContactTile
 import com.example.amma.ui.components.EmergencyTile
@@ -266,6 +267,15 @@ fun HomeScreen(
                         onNavigateToAdmin()
                     },
                     onDismiss = { viewModel.dismissAdminAuth() }
+                )
+            }
+
+            // First-Time Launch Caregiver Google Sign-In Sheet
+            if (uiState.showInitialLogin) {
+                CaregiverLoginSheet(
+                    authState = uiState.authState,
+                    onSignIn = { ctx -> viewModel.signInWithGoogle(ctx) },
+                    onDismiss = { viewModel.dismissInitialLogin() }
                 )
             }
         }

@@ -99,9 +99,9 @@ class ContactRepository(context: Context) {
                     speakSignalOnTap = obj.optBoolean("speakSignalOnTap", true),
                     speakContactNameOnTap = obj.optBoolean("speakContactNameOnTap", true),
                     speechRate = obj.optDouble("speechRate", 0.95).toFloat(),
-                    speechPitch = obj.optDouble("speechPitch", 1.0).toFloat(),
                     emergencyContactId = if (obj.has("emergencyContactId")) obj.getString("emergencyContactId") else null,
-                    defaultSimSlot = obj.optInt("defaultSimSlot", 0)
+                    defaultSimSlot = obj.optInt("defaultSimSlot", 0),
+                    hasCompletedInitialLogin = obj.optBoolean("hasCompletedInitialLogin", false)
                 )
             }
         } catch (e: Exception) {
@@ -244,6 +244,24 @@ class ContactRepository(context: Context) {
         saveContactsToDisk(_contacts.value)
     }
 
+    suspend fun mergeCloudContacts(cloudContacts: List<Contact>) = withContext(Dispatchers.IO) {
+        if (cloudContacts.isEmpty()) return@withContext
+
+        val current = _contacts.value.toMutableList()
+        for (cloudContact in cloudContacts) {
+            val index = current.indexOfFirst { it.id == cloudContact.id }
+            if (index >= 0) {
+                current[index] = cloudContact
+            } else {
+                current.add(cloudContact)
+            }
+        }
+
+        val sorted = current.sortedBy { it.sortOrder }
+        _contacts.value = sorted
+        saveContactsToDisk(sorted)
+    }
+
     suspend fun saveSettings(newSettings: AppSettings) = withContext(Dispatchers.IO) {
         _settings.value = newSettings
         saveSettingsToDisk(newSettings)
@@ -287,6 +305,7 @@ class ContactRepository(context: Context) {
             obj.put("speechPitch", s.speechPitch.toDouble())
             obj.put("emergencyContactId", s.emergencyContactId ?: JSONObject.NULL)
             obj.put("defaultSimSlot", s.defaultSimSlot)
+            obj.put("hasCompletedInitialLogin", s.hasCompletedInitialLogin)
             settingsFile.writeText(obj.toString(2))
         } catch (e: Exception) {
             Log.e(TAG, "Error writing settings to disk", e)

@@ -1,6 +1,10 @@
 package com.example.amma
 
 import android.app.Application
+import com.example.amma.cloud.auth.AuthRepository
+import com.example.amma.cloud.auth.AuthState
+import com.example.amma.cloud.firestore.FirestoreSyncEngine
+import com.example.amma.cloud.r2.R2StorageManager
 import com.example.amma.data.ContactRepository
 import com.example.amma.feedback.HapticsManager
 import com.example.amma.feedback.SoundCueManager
@@ -10,6 +14,7 @@ import com.example.amma.voice.VoiceGuidanceEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class AmmaApplication : Application() {
 
@@ -33,6 +38,15 @@ class AmmaApplication : Application() {
     lateinit var soundCueManager: SoundCueManager
         private set
 
+    lateinit var authRepository: AuthRepository
+        private set
+
+    lateinit var firestoreSyncEngine: FirestoreSyncEngine
+        private set
+
+    lateinit var r2StorageManager: R2StorageManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -44,11 +58,28 @@ class AmmaApplication : Application() {
         hapticsManager = HapticsManager(this)
         soundCueManager = SoundCueManager()
 
+        // Cloud Integrations: Auth, Firestore & Cloudflare R2
+        authRepository = AuthRepository(this)
+        firestoreSyncEngine = FirestoreSyncEngine(this, contactRepository, applicationScope)
+        r2StorageManager = R2StorageManager(this)
+
+        // Automatically start Firestore sync when authenticated
+        applicationScope.launch {
+            authRepository.authState.collect { state ->
+                if (state is AuthState.Authenticated) {
+                    firestoreSyncEngine.startSync(state.uid)
+                } else {
+                    firestoreSyncEngine.stopSync()
+                }
+            }
+        }
+
         systemStatusEngine.start()
     }
 
     override fun onTerminate() {
         super.onTerminate()
+        firestoreSyncEngine.stopSync()
         systemStatusEngine.stop()
         voiceGuidanceEngine.shutdown()
         soundCueManager.release()

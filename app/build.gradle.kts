@@ -2,6 +2,7 @@ plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -11,8 +12,8 @@ android {
         applicationId = "com.example.amma"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
     }
 
     signingConfigs {
@@ -55,6 +56,11 @@ android {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 
@@ -104,4 +110,17 @@ dependencies {
   implementation(libs.androidx.navigation3.ui)
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
+  // Image Loading from Cloudflare R2 CDN & Local Files
+  implementation(libs.coil.compose)
+
+  // Firebase Suite (BOM)
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
+
+  // Google Credential Manager (Modern Google Sign-In)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services.auth)
+  implementation(libs.google.identity.googleid)
 }

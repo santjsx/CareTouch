@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.HeadsetMic
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MedicalServices
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
@@ -109,6 +110,9 @@ import com.example.amma.theme.AmmaSurfaceElevated
 import com.example.amma.theme.AmmaTextPrimary
 import com.example.amma.theme.AmmaTextSecondary
 import com.example.amma.theme.AmmaWhatsAppGreen
+import com.example.amma.theme.AmmaBlueInfo
+import com.example.amma.cloud.auth.AuthState
+import com.example.amma.cloud.r2.R2Config
 import com.example.amma.ui.components.ContactAvatar
 import com.example.amma.ui.components.bounceClick
 import com.example.amma.util.PhotoStorageHelper
@@ -233,7 +237,9 @@ fun AdminDashboardScreen(
                 )
                 2 -> DiagnosticsTab(
                     uiState = uiState,
-                    onRunAudioTest = { viewModel.testTeluguSpeech("అమ్మా, సిగ్నల్ మరియు బ్యాటరీ పరీక్ష విజయవంతమైంది.") }
+                    onRunAudioTest = { viewModel.testTeluguSpeech("అమ్మా, సిగ్నల్ మరియు బ్యాటరీ పరీక్ష విజయవంతమైంది.") },
+                    onSignInGoogle = { ctx -> viewModel.signInWithGoogle(ctx) },
+                    onSignOut = { viewModel.signOut() }
                 )
             }
 
@@ -818,8 +824,11 @@ private fun SpeedPresetPill(
 @Composable
 private fun DiagnosticsTab(
     uiState: AdminUiState,
-    onRunAudioTest: () -> Unit
+    onRunAudioTest: () -> Unit,
+    onSignInGoogle: (android.content.Context) -> Unit,
+    onSignOut: () -> Unit
 ) {
+    val context = LocalContext.current
     val allGood = uiState.status.isSimAvailable && uiState.isTtsReady && uiState.status.isInternetAvailable
 
     LazyColumn(
@@ -828,6 +837,121 @@ private fun DiagnosticsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Section 0: Caregiver Cloud & Sync Status (Zero-Configuration)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = AmmaSurfaceElevated),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AmmaBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    when (val auth = uiState.authState) {
+                        is AuthState.Authenticated -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (!auth.photoUrl.isNullOrBlank()) {
+                                        coil.compose.SubcomposeAsyncImage(
+                                            model = auth.photoUrl,
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            error = {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(42.dp)
+                                                        .clip(CircleShape)
+                                                        .background(AmmaGreenBright.copy(alpha = 0.2f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
+                                                }
+                                            }
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(AmmaGreenBright.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(imageVector = Icons.Rounded.Person, contentDescription = null, tint = AmmaGreenBright)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column {
+                                        Text(
+                                            text = auth.displayName ?: "Caregiver",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = AmmaTextPrimary
+                                        )
+                                        Text(
+                                            text = "🟢 Cloud Sync Active (${auth.email ?: ""})",
+                                            fontSize = 12.sp,
+                                            color = AmmaGreenBright
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = onSignOut,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+                                ) {
+                                    Text("Sign Out", fontSize = 12.sp, color = Color.White)
+                                }
+                            }
+                        }
+
+                        else -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Cloud Backup & Sync",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = AmmaTextPrimary
+                                    )
+                                    Text(
+                                        text = "Sign in with Google to protect and sync contacts",
+                                        fontSize = 12.sp,
+                                        color = AmmaTextSecondary
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Button(
+                                    onClick = { onSignInGoogle(context) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                                ) {
+                                    Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.Black)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Section 1: Overall Health Banner
         item {
             Card(

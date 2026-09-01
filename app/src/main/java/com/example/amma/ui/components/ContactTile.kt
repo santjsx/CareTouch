@@ -134,12 +134,28 @@ fun ContactTile(
                     .background(Brush.linearGradient(avatarGradient)),
                 contentAlignment = Alignment.Center
             ) {
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
+                if (!contact.photoUri.isNullOrBlank()) {
+                    coil.compose.SubcomposeAsyncImage(
+                        model = contact.photoUri,
                         contentDescription = contact.displayName,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        error = {
+                            Icon(
+                                imageVector = relationshipIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        },
+                        loading = {
+                            Icon(
+                                imageVector = relationshipIcon,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
                     )
                 } else {
                     Icon(
