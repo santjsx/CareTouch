@@ -43,24 +43,36 @@ class ContactRepository(context: Context) {
                 val list = mutableListOf<Contact>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
+                    val rawPhotoUri = if (obj.has("photoUri") && !obj.isNull("photoUri")) obj.getString("photoUri") else null
+                    val verifiedPhotoUri = if (rawPhotoUri != null && rawPhotoUri.startsWith("file:")) {
+                        try {
+                            val file = File(java.net.URI.create(rawPhotoUri))
+                            if (file.exists() && file.length() > 0) rawPhotoUri else null
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else {
+                        rawPhotoUri
+                    }
+
                     list.add(
                         Contact(
                             id = obj.optString("id"),
-                            displayName = obj.optString("displayName"),
-                            relationship = obj.optString("relationship"),
-                            photoUri = if (obj.has("photoUri") && !obj.isNull("photoUri")) obj.getString("photoUri") else null,
-                            phoneNumber = obj.optString("phoneNumber"),
-                            whatsappNumber = obj.optString("whatsappNumber", obj.optString("phoneNumber")),
+                            displayName = obj.optString("displayName").trim(),
+                            relationship = obj.optString("relationship").trim(),
+                            photoUri = verifiedPhotoUri,
+                            phoneNumber = obj.optString("phoneNumber").trim(),
+                            whatsappNumber = obj.optString("whatsappNumber", obj.optString("phoneNumber")).trim(),
                             primaryTransport = CallTransport.valueOf(obj.optString("primaryTransport", CallTransport.CELLULAR.name)),
                             allowWhatsappAudio = obj.optBoolean("allowWhatsappAudio", true),
                             allowWhatsappVideo = obj.optBoolean("allowWhatsappVideo", true),
-                            customPronunciation = if (obj.has("customPronunciation")) obj.getString("customPronunciation") else null,
+                            customPronunciation = if (obj.has("customPronunciation")) obj.getString("customPronunciation").trim() else null,
                             sortOrder = obj.optInt("sortOrder", i),
                             isEmergencyContact = obj.optBoolean("isEmergencyContact", false)
                         )
                     )
                 }
-                val validList = list.filter { it.displayName.trim().isNotBlank() && it.phoneNumber.trim().isNotBlank() }
+                val validList = list.filter { it.displayName.isNotBlank() && it.phoneNumber.isNotBlank() }
                 _contacts.value = (if (validList.isNotEmpty()) validList else getInitialPresets()).sortedBy { it.sortOrder }
                 saveContactsToDisk(_contacts.value)
             } else {
@@ -99,12 +111,23 @@ class ContactRepository(context: Context) {
 
     fun persistPhotoLocally(photoUriString: String?, contactId: String): String? {
         if (photoUriString.isNullOrBlank()) return null
-        if (photoUriString.startsWith("file://") && photoUriString.contains("photos/contact_")) {
+        if (photoUriString.startsWith("file:") && photoUriString.contains("photos/contact_")) {
             return photoUriString // Already persisted in private storage
         }
 
         return try {
             val uri = android.net.Uri.parse(photoUriString)
+            if (uri.scheme == "content") {
+                try {
+                    appContext.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: Exception) {
+                    // Not all content URIs support persistable permissions
+                }
+            }
+
             val photosDir = File(appContext.filesDir, "photos").apply { if (!exists()) mkdirs() }
             val destFile = File(photosDir, "contact_${contactId}.jpg")
 

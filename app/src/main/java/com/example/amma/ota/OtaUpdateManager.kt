@@ -230,6 +230,20 @@ class OtaUpdateManager(private val context: Context) {
 
         try {
             val totalSizeMb = if (info.apkSizeMb > 0.1) info.apkSizeMb else 15.0
+            
+            // Edge Case: Validate available disk storage before downloading
+            val requiredBytes = (if (info.apkSizeBytes > 0L) info.apkSizeBytes * 2 else 35 * 1024 * 1024L)
+            val availableBytes = try {
+                android.os.StatFs(context.cacheDir.path).availableBytes
+            } catch (e: Exception) {
+                Long.MAX_VALUE
+            }
+
+            if (availableBytes < requiredBytes) {
+                _updateStatus.value = UpdateStatus.Error("Insufficient storage space to download update. Please free up space.")
+                return
+            }
+
             // Immediate UI feedback at 0ms
             _updateStatus.value = UpdateStatus.Downloading(0, 0.0, totalSizeMb)
 
@@ -296,6 +310,13 @@ class OtaUpdateManager(private val context: Context) {
                     outputStream.close()
                     inputStream.close()
 
+                    // Edge Case: Validate downloaded APK file integrity
+                    if (!targetFile.exists() || targetFile.length() < 100_000L) {
+                        _updateStatus.value = UpdateStatus.Error("Corrupted or incomplete update package downloaded")
+                        targetFile.delete()
+                        return@withContext
+                    }
+
                     _updateStatus.value = UpdateStatus.ReadyToInstall(targetFile)
 
                     withContext(Dispatchers.Main) {
@@ -313,6 +334,11 @@ class OtaUpdateManager(private val context: Context) {
 
     fun installApk(apkFile: File) {
         try {
+            if (!apkFile.exists() || apkFile.length() < 100_000L) {
+                _updateStatus.value = UpdateStatus.Error("Invalid APK file. Please check for update again.")
+                return
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
                     val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {

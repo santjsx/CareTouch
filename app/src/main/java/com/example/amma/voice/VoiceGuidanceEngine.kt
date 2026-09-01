@@ -3,6 +3,9 @@ package com.example.amma.voice
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -17,14 +20,17 @@ import java.util.Locale
  * On-Device Speech Services Engine for Pure, Natural Telugu Voice:
  * - Direct integration with Google Speech Services & System TTS fallback
  * - Automatic selection of authentic Telugu voices (te-IN)
+ * - Audio focus management (ducks background audio cleanly while speaking)
  * - Pure Telugu phrase sanitization eliminating English phonetic distortions
  * - 0ms latency on-device execution with polite, warm cadence
  */
 class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitListener {
 
     private val appContext = context.applicationContext
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var textToSpeech: TextToSpeech? = null
     private var isGoogleTtsAttempted = true
+    private var audioFocusRequest: Any? = null
 
     private val _isTtsReady = MutableStateFlow(false)
     val isTtsReady: StateFlow<Boolean> = _isTtsReady.asStateFlow()
@@ -62,8 +68,8 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
             var langResult = tts.setLanguage(teluguLocale)
 
             if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.w(TAG, "Telugu locale (te-IN) not fully supported, trying generic Locale('te')")
-                langResult = tts.setLanguage(Locale("te"))
+                Log.w(TAG, "Telugu locale (te-IN) not fully supported, trying generic Locale te")
+                langResult = tts.setLanguage(Locale.forLanguageTag("te"))
             }
 
             // Select highest quality Telugu voice available
@@ -103,15 +109,18 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
 
                 override fun onDone(utteranceId: String?) {
                     _isSpeaking.value = false
+                    abandonAudioFocus()
                 }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
                     _isSpeaking.value = false
+                    abandonAudioFocus()
                 }
 
                 override fun onError(utteranceId: String?, errorCode: Int) {
                     _isSpeaking.value = false
+                    abandonAudioFocus()
                     Log.e(TAG, "TTS Utterance error code: $errorCode for utteranceId: $utteranceId")
                 }
             })
@@ -156,6 +165,8 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
             stop()
         }
 
+        requestAudioFocus()
+
         val queueMode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
         val utteranceId = "utterance_${System.currentTimeMillis()}"
         val params = Bundle().apply {
@@ -167,10 +178,12 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
             val result = tts.speak(sanitized, queueMode, params, utteranceId)
             if (result == TextToSpeech.ERROR) {
                 Log.w(TAG, "TTS speak returned error, re-initializing engine")
+                abandonAudioFocus()
                 initializeTts()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception during TTS speak, re-initializing engine", e)
+            abandonAudioFocus()
             initializeTts()
         }
     }
@@ -182,6 +195,52 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
             Log.e(TAG, "Error stopping TTS", e)
         }
         _isSpeaking.value = false
+        abandonAudioFocus()
+    }
+
+    private fun requestAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener { /* handle ducking */ }
+                    .build()
+                audioFocusRequest = focusRequest
+                am.requestAudioFocus(focusRequest)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_ACCESSIBILITY,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error requesting audio focus", e)
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                (audioFocusRequest as? AudioFocusRequest)?.let {
+                    am.abandonAudioFocusRequest(it)
+                }
+                audioFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(null)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error abandoning audio focus", e)
+        }
     }
 
     fun updateSpeechParameters(rate: Float, pitch: Float) {

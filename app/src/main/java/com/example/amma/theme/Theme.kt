@@ -51,8 +51,6 @@ fun AmmaTheme(
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = AmmaBackground.toArgb()
-                window.navigationBarColor = AmmaBackground.toArgb()
                 val controller = WindowCompat.getInsetsController(window, view)
                 controller.isAppearanceLightStatusBars = false
                 controller.isAppearanceLightNavigationBars = false

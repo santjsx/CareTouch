@@ -155,8 +155,16 @@ class CallOrchestrator(private val context: Context) {
             onStateChange(CallState.Calling(contact, transport))
 
             val uri = Uri.parse("https://api.whatsapp.com/send?phone=$rawNumber")
+            val pm = appContext.packageManager
+            val hasRegularWa = try { pm.getPackageInfo("com.whatsapp", 0); true } catch(e: Exception) { false }
+            val hasBusinessWa = try { pm.getPackageInfo("com.whatsapp.w4b", 0); true } catch(e: Exception) { false }
+
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                setPackage("com.whatsapp")
+                if (hasRegularWa) {
+                    setPackage("com.whatsapp")
+                } else if (hasBusinessWa) {
+                    setPackage("com.whatsapp.w4b")
+                }
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
@@ -164,12 +172,19 @@ class CallOrchestrator(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error launching WhatsApp intent, attempting package launcher fallback", e)
             try {
-                val launchIntent = appContext.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                val pm = appContext.packageManager
+                val launchIntent = pm.getLaunchIntentForPackage("com.whatsapp")
+                    ?: pm.getLaunchIntentForPackage("com.whatsapp.w4b")
+
                 if (launchIntent != null) {
                     launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     appContext.startActivity(launchIntent)
                 } else {
-                    throw e
+                    // Fallback to browser without package filter
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$rawNumber")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    appContext.startActivity(webIntent)
                 }
             } catch (e2: Exception) {
                 // Edge Case 7: Seamless fallback prompt if WhatsApp launch completely fails
