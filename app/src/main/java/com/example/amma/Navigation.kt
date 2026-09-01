@@ -10,8 +10,8 @@ import com.example.amma.ui.admin.AdminDashboardScreen
 import com.example.amma.ui.home.HomeScreen
 
 @Composable
-fun MainNavigation() {
-    val backStack = rememberNavBackStack(HomeNavKey)
+fun MainNavigation(initialKey: Any = HomeNavKey) {
+    val backStack = rememberNavBackStack(initialKey)
 
     NavDisplay(
         backStack = backStack,

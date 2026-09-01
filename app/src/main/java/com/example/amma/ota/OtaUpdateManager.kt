@@ -1,13 +1,21 @@
 package com.example.amma.ota
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.amma.BuildConfig
+import com.example.amma.MainActivity
+import com.example.amma.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +55,8 @@ sealed interface UpdateStatus {
 
 class OtaUpdateManager(private val context: Context) {
 
+    private val prefs = context.getSharedPreferences("caretouch_ota_prefs", Context.MODE_PRIVATE)
+
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10L, TimeUnit.SECONDS)
         .readTimeout(45L, TimeUnit.SECONDS)
@@ -61,7 +71,77 @@ class OtaUpdateManager(private val context: Context) {
     private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
 
-    suspend fun checkForUpdates(owner: String = "santjsx", repo: String = "CareTouch"): UpdateStatus {
+    init {
+        createNotificationChannel()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "CareTouch Updates"
+            val descriptionText = "Notifications for new CareTouch app updates"
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    fun sendUpdateAvailableNotification(info: UpdateInfo) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "Notification permission not granted, skipping OTA notification")
+                return
+            }
+        }
+
+        val lastNotifiedVersion = prefs.getString(KEY_LAST_NOTIFIED_VERSION, "")
+        if (lastNotifiedVersion == info.latestVersion) {
+            Log.d(TAG, "Already notified user for version ${info.latestVersion}, skipping duplicate")
+            return
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_OPEN_OTA, true)
+            putExtra(EXTRA_LATEST_VERSION, info.latestVersion)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("✨ New CareTouch Update Available (v${info.latestVersion})")
+            .setContentText("A new version is ready with improvements. Tap to install now.")
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("A new version of CareTouch (v${info.latestVersion}) is ready.\nTap to open update settings and install seamlessly.")
+            )
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.notify(NOTIFICATION_ID, notification)
+
+        prefs.edit().putString(KEY_LAST_NOTIFIED_VERSION, info.latestVersion).apply()
+        Log.i(TAG, "Sent push notification for OTA update v${info.latestVersion}")
+    }
+
+    suspend fun checkForUpdates(
+        owner: String = "santjsx",
+        repo: String = "CareTouch",
+        showNotificationIfAvailable: Boolean = true
+    ): UpdateStatus {
         return withContext(Dispatchers.IO) {
             _updateStatus.value = UpdateStatus.Checking
             try {
@@ -114,17 +194,19 @@ class OtaUpdateManager(private val context: Context) {
 
                 val isNewer = isVersionNewer(tagName, currentVersion)
                 val status = if (isNewer && apkDownloadUrl.isNotBlank()) {
-                    UpdateStatus.UpdateAvailable(
-                        UpdateInfo(
-                            hasUpdate = true,
-                            currentVersion = BuildConfig.VERSION_NAME,
-                            latestVersion = tagName,
-                            releaseTitle = releaseName,
-                            releaseNotes = releaseNotes,
-                            downloadUrl = apkDownloadUrl,
-                            apkSizeBytes = apkSize
-                        )
+                    val info = UpdateInfo(
+                        hasUpdate = true,
+                        currentVersion = BuildConfig.VERSION_NAME,
+                        latestVersion = tagName,
+                        releaseTitle = releaseName,
+                        releaseNotes = releaseNotes,
+                        downloadUrl = apkDownloadUrl,
+                        apkSizeBytes = apkSize
                     )
+                    if (showNotificationIfAvailable) {
+                        sendUpdateAvailableNotification(info)
+                    }
+                    UpdateStatus.UpdateAvailable(info)
                 } else {
                     UpdateStatus.UpToDate(BuildConfig.VERSION_NAME)
                 }
@@ -292,5 +374,10 @@ class OtaUpdateManager(private val context: Context) {
 
     companion object {
         private const val TAG = "OtaUpdateManager"
+        const val CHANNEL_ID = "caretouch_ota_updates"
+        const val NOTIFICATION_ID = 1001
+        const val EXTRA_OPEN_OTA = "extra_open_ota"
+        const val EXTRA_LATEST_VERSION = "extra_latest_version"
+        private const val KEY_LAST_NOTIFIED_VERSION = "key_last_notified_version"
     }
 }
