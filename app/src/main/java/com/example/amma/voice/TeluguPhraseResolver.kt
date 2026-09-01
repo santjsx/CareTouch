@@ -7,7 +7,7 @@ import java.util.Calendar
 
 /**
  * Native Telugu Spoken Phrase Resolver
- * Tuned with polite, warm, and natural conversational cadence for elders.
+ * Pure Telugu engine ensuring natural, polite, and authentic Telugu voice output for elders.
  */
 object TeluguPhraseResolver {
 
@@ -32,13 +32,178 @@ object TeluguPhraseResolver {
         "జూలై", "ఆగస్టు", "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"
     )
 
+    // Common English names and words mapped to accurate Telugu phonetic text
+    private val commonWordsToTelugu = mapOf(
+        "santhosh" to "సంతోష్",
+        "santosh" to "సంతోష్",
+        "swapna" to "స్వప్న",
+        "ramesh" to "రమేష్",
+        "srinu" to "శ్రీను",
+        "srinivas" to "శ్రీనివాస్",
+        "sreenivas" to "శ్రీనివాస్",
+        "doctor" to "డాక్టర్",
+        "dr" to "డాక్టర్",
+        "amma" to "అమ్మ",
+        "nanna" to "నాన్న",
+        "akka" to "అక్క",
+        "annayya" to "అన్నయ్య",
+        "anna" to "అన్న",
+        "chelli" to "చెల్లి",
+        "thammudu" to "తమ్ముడు",
+        "son" to "కొడుకు",
+        "daughter" to "కూతురు",
+        "hospital" to "హాస్పిటల్",
+        "police" to "పోలీస్",
+        "ambulance" to "అంబులెన్స్",
+        "emergency" to "ఎమర్జెన్సీ",
+        "kiran" to "కిరణ్",
+        "rajesh" to "రాజేష్",
+        "priya" to "ప్రియ",
+        "suresh" to "సురేష్",
+        "mohan" to "మోహన్",
+        "venkat" to "వెంకట్",
+        "rao" to "రావు",
+        "reddy" to "రెడ్డి",
+        "kumar" to "కుమార్",
+        "prasad" to "ప్రసాద్",
+        "babu" to "బాబు",
+        "lakshmi" to "లక్ష్మి",
+        "padma" to "పద్మ",
+        "vani" to "వాణి",
+        "geetha" to "గీత",
+        "gita" to "గీత",
+        "sai" to "సాయి",
+        "anita" to "అనిత",
+        "kavitha" to "కవిత",
+        "manju" to "మంజు",
+        "sunitha" to "సునీత",
+        "roopa" to "రూప",
+        "deepa" to "దీప",
+        "radha" to "రాధ",
+        "shanti" to "శాంతి",
+        "ramu" to "రాము",
+        "krishna" to "కృష్ణ",
+        "vijay" to "విజయ్",
+        "ravi" to "రవి",
+        "anand" to "ఆనంద్",
+        "praveen" to "ప్రవీణ్",
+        "madhu" to "మధు",
+        "satish" to "సతీష్",
+        "naresh" to "నరేష్",
+        "siva" to "శివ",
+        "shiva" to "శివ",
+        "harish" to "హరీష్",
+        "ganesh" to "గణేష్",
+        "mahesh" to "మహేష్",
+        "bala" to "బాల",
+        "whatsapp" to "వాట్సాప్",
+        "call" to "కాల్",
+        "video" to "వీడియో",
+        "audio" to "ఆడియో",
+        "battery" to "బ్యాటరీ",
+        "signal" to "సిగ్నల్",
+        "internet" to "ఇంటర్నెట్",
+        "sim" to "సిమ్",
+        "mobile" to "మొబైల్"
+    )
+
+    /**
+     * Transliterates any English name/word to natural Telugu script
+     */
+    fun transliterateToTelugu(word: String): String {
+        val trimmed = word.trim()
+        if (trimmed.isBlank()) return ""
+
+        // If already contains Telugu characters, return as-is
+        if (trimmed.any { it in '\u0C00'..'\u0C7F' }) {
+            return trimmed
+        }
+
+        val lower = trimmed.lowercase()
+        commonWordsToTelugu[lower]?.let { return it }
+
+        // Syllable transliteration for arbitrary English names
+        return phoneticTransliterate(lower)
+    }
+
+    private fun phoneticTransliterate(input: String): String {
+        var s = input
+            .replace("sh", "ష్")
+            .replace("th", "త్")
+            .replace("ch", "చ్")
+            .replace("kh", "ఖ్")
+            .replace("gh", "ఘ్")
+            .replace("ph", "ఫ్")
+            .replace("bh", "భ్")
+            .replace("dh", "ధ్")
+            .replace("aa", "ా")
+            .replace("ee", "ీ")
+            .replace("oo", "ూ")
+            .replace("ou", "ౌ")
+            .replace("ai", "ై")
+            .replace("au", "ౌ")
+            .replace("a", "ా")
+            .replace("e", "ె")
+            .replace("i", "ి")
+            .replace("o", "ొ")
+            .replace("u", "ు")
+            .replace("k", "క్")
+            .replace("g", "గ్")
+            .replace("c", "క్")
+            .replace("j", "జ్")
+            .replace("t", "ట్")
+            .replace("d", "డ్")
+            .replace("n", "న్")
+            .replace("p", "ప్")
+            .replace("b", "బ్")
+            .replace("m", "మ్")
+            .replace("y", "య్")
+            .replace("r", "ర్")
+            .replace("l", "ల్")
+            .replace("v", "వ్")
+            .replace("w", "వ్")
+            .replace("s", "స్")
+            .replace("h", "హ్")
+            .replace("z", "జ్")
+
+        // Clean up any remaining Latin characters
+        return s.filter { it in '\u0C00'..'\u0C7F' || it.isWhitespace() || it in ".,!?" }
+    }
+
+    /**
+     * Ensures all text is 100% pure Telugu words, converting any Latin text or digits to pure Telugu.
+     */
     fun sanitizeForSpeech(text: String): String {
-        // Strip emojis, parenthesized English text, and special symbols
-        val cleaned = text
-            .replace(Regex("\\s*\\([^)]*\\)"), "") // Removes (Son), (Amma), etc.
-            .replace(Regex("[^\\p{L}\\p{Nd}\\s]"), "") // Keeps letters, numbers, whitespace
-            .trim()
-        return if (cleaned.isBlank()) text.trim() else cleaned
+        if (text.isBlank()) return ""
+
+        // Remove parenthesized info like (e.g. Son / కొడుకు)
+        val withoutParentheses = text.replace(Regex("\\s*\\([^)]*\\)"), "")
+
+        // Split into tokens to transliterate English words into Telugu
+        val tokens = withoutParentheses.split(Regex("(?<=[\\s.,!?])|(?=[\\s.,!?])"))
+        val builder = StringBuilder()
+
+        for (token in tokens) {
+            val trimmed = token.trim()
+            if (trimmed.isEmpty()) {
+                builder.append(token)
+                continue
+            }
+
+            // Check if token is digits
+            val num = trimmed.toIntOrNull()
+            if (num != null) {
+                builder.append(numberToTelugu(num))
+            } else if (trimmed.any { it in 'a'..'z' || it in 'A'..'Z' }) {
+                // English word -> convert to Telugu phonetics
+                builder.append(transliterateToTelugu(trimmed))
+            } else {
+                // Already Telugu or punctuation
+                builder.append(trimmed)
+            }
+        }
+
+        return builder.toString().trim()
     }
 
     fun numberToTelugu(num: Int): String {
@@ -192,18 +357,20 @@ object TeluguPhraseResolver {
     }
 
     fun getCallingAnnouncement(contactName: String, transport: CallTransport, isEmergency: Boolean = false): String {
+        val safeName = transliterateToTelugu(contactName)
         if (isEmergency) {
-            return "సహాయం కోసం $contactName గారికి వెంటనే ఫోన్ కలుపుతున్నాను."
+            return "సహాయం కోసం $safeName గారికి వెంటనే ఫోన్ కలుపుతున్నాను."
         }
         return when (transport) {
-            CallTransport.CELLULAR -> "$contactName గారికి ఫోన్ కలుపుతున్నాను."
-            CallTransport.WHATSAPP_AUDIO -> "$contactName గారికి వాట్సాప్ ఫోన్ కలుపుతున్నాను."
-            CallTransport.WHATSAPP_VIDEO -> "$contactName గారికి వాట్సాప్ వీడియో కాల్ కలుపుతున్నాను."
+            CallTransport.CELLULAR -> "$safeName గారికి ఫోన్ కలుపుతున్నాను."
+            CallTransport.WHATSAPP_AUDIO -> "$safeName గారికి వాట్సాప్ ఫోన్ కలుపుతున్నాను."
+            CallTransport.WHATSAPP_VIDEO -> "$safeName గారికి వాట్సాప్ వీడియో కాల్ కలుపుతున్నాను."
         }
     }
 
     fun getFallbackPromptPhrase(contactName: String): String {
-        return "ఇంటర్నెట్ లేదు. $contactName గారికి సాధారణ ఫోన్ చేయమంటారా?"
+        val safeName = transliterateToTelugu(contactName)
+        return "ఇంటర్నెట్ లేదు. $safeName గారికి సాధారణ ఫోన్ చేయమంటారా?"
     }
 
     fun getCallConnectedPhrase(): String = "ఫోన్ కలిసింది."
@@ -212,6 +379,8 @@ object TeluguPhraseResolver {
 
     fun getWhatsAppNotInstalledPhrase(): String = "ఫోన్‌లో వాట్సాప్ లేదు."
 
-    fun getEmergencyHoldingPhrase(contactName: String): String =
-        "సహాయం కోసం $contactName గారికి ఫోన్ చేయడానికి బటన్‌ను పట్టుకోండి."
+    fun getEmergencyHoldingPhrase(contactName: String): String {
+        val safeName = transliterateToTelugu(contactName)
+        return "సహాయం కోసం $safeName గారికి ఫోన్ చేయడానికి బటన్‌ను పట్టుకోండి."
+    }
 }

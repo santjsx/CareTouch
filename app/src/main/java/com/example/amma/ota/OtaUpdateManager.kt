@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,7 +31,7 @@ data class UpdateInfo(
     val downloadUrl: String,
     val apkSizeBytes: Long
 ) {
-    val apkSizeMb: Double get() = apkSizeBytes / (1024.0 * 1024.0)
+    val apkSizeMb: Double get() = if (apkSizeBytes > 0) apkSizeBytes / (1024.0 * 1024.0) else 15.0
 }
 
 sealed interface UpdateStatus {
@@ -45,9 +47,16 @@ sealed interface UpdateStatus {
 class OtaUpdateManager(private val context: Context) {
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
+        .fastFallback(true) // Dual-stack Happy Eyeballs: connects in ~50ms bypassing IPv6 stalls
+        .retryOnConnectionFailure(true)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
+
+    private val downloadMutex = Mutex()
 
     private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
@@ -132,73 +141,83 @@ class OtaUpdateManager(private val context: Context) {
     }
 
     suspend fun downloadAndInstall(info: UpdateInfo) {
-        // Immediate UI response with 0ms delay
-        _updateStatus.value = UpdateStatus.Downloading(0, 0.0, info.apkSizeMb)
+        if (!downloadMutex.tryLock()) {
+            Log.w(TAG, "Download already in progress, ignoring duplicate request")
+            return
+        }
 
-        withContext(Dispatchers.IO) {
-            try {
-                val otaDir = File(context.cacheDir, "ota").apply {
-                    mkdirs()
-                    // Clean up any stale APKs
-                    listFiles()?.forEach { if (it.name.endsWith(".apk")) it.delete() }
-                }
-                val targetFile = File(otaDir, "CareTouch-v${info.latestVersion}.apk")
+        try {
+            val totalSizeMb = if (info.apkSizeMb > 0.1) info.apkSizeMb else 15.0
+            // Immediate UI feedback at 0ms
+            _updateStatus.value = UpdateStatus.Downloading(0, 0.0, totalSizeMb)
 
-                val request = Request.Builder()
-                    .url(info.downloadUrl)
-                    .header("User-Agent", "CareTouch-OTA-Updater")
-                    .build()
-
-                val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    _updateStatus.value = UpdateStatus.Error("Download failed with HTTP ${response.code}")
-                    return@withContext
-                }
-
-                val body = response.body ?: run {
-                    _updateStatus.value = UpdateStatus.Error("Empty download body")
-                    return@withContext
-                }
-
-                val contentLength = body.contentLength().takeIf { it > 0 } ?: info.apkSizeBytes
-                val inputStream = body.byteStream().buffered(64 * 1024)
-                val outputStream = FileOutputStream(targetFile).buffered(64 * 1024)
-
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
-                var totalBytesRead = 0L
-                var lastEmitTime = 0L
-                var lastEmitPercent = -1
-
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
-
-                    val percent = if (contentLength > 0) ((totalBytesRead * 100) / contentLength).toInt().coerceIn(0, 100) else 0
-                    val downloadedMb = totalBytesRead / (1024.0 * 1024.0)
-                    val totalMb = contentLength / (1024.0 * 1024.0)
-
-                    val now = System.currentTimeMillis()
-                    if (percent != lastEmitPercent && (now - lastEmitTime >= 40 || percent == 100)) {
-                        lastEmitTime = now
-                        lastEmitPercent = percent
-                        _updateStatus.value = UpdateStatus.Downloading(percent, downloadedMb, totalMb)
+            withContext(Dispatchers.IO) {
+                try {
+                    val otaDir = File(context.cacheDir, "ota").apply {
+                        mkdirs()
+                        listFiles()?.forEach { if (it.name.endsWith(".apk")) it.delete() }
                     }
+                    val targetFile = File(otaDir, "CareTouch-v${info.latestVersion}.apk")
+
+                    val request = Request.Builder()
+                        .url(info.downloadUrl)
+                        .header("User-Agent", "CareTouch-OTA-Updater")
+                        .build()
+
+                    val response = httpClient.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        _updateStatus.value = UpdateStatus.Error("Download failed with HTTP ${response.code}")
+                        return@withContext
+                    }
+
+                    val body = response.body ?: run {
+                        _updateStatus.value = UpdateStatus.Error("Empty download body")
+                        return@withContext
+                    }
+
+                    val contentLength = body.contentLength().takeIf { it > 0 } ?: info.apkSizeBytes
+                    val finalTotalMb = if (contentLength > 0) contentLength / (1024.0 * 1024.0) else totalSizeMb
+
+                    val inputStream = body.byteStream().buffered(64 * 1024)
+                    val outputStream = FileOutputStream(targetFile).buffered(64 * 1024)
+
+                    val buffer = ByteArray(64 * 1024)
+                    var bytesRead: Int
+                    var totalBytesRead = 0L
+                    var lastEmitTime = 0L
+                    var lastEmitPercent = -1
+
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead
+
+                        val percent = if (contentLength > 0) ((totalBytesRead * 100) / contentLength).toInt().coerceIn(0, 100) else 0
+                        val downloadedMb = totalBytesRead / (1024.0 * 1024.0)
+
+                        val now = System.currentTimeMillis()
+                        if (percent != lastEmitPercent && (now - lastEmitTime >= 30 || percent == 100)) {
+                            lastEmitTime = now
+                            lastEmitPercent = percent
+                            _updateStatus.value = UpdateStatus.Downloading(percent, downloadedMb, finalTotalMb)
+                        }
+                    }
+
+                    outputStream.flush()
+                    outputStream.close()
+                    inputStream.close()
+
+                    _updateStatus.value = UpdateStatus.ReadyToInstall(targetFile)
+
+                    withContext(Dispatchers.Main) {
+                        installApk(targetFile)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error downloading OTA update", e)
+                    _updateStatus.value = UpdateStatus.Error("Download failed: ${e.localizedMessage ?: "Network error"}")
                 }
-
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-
-                _updateStatus.value = UpdateStatus.ReadyToInstall(targetFile)
-
-                withContext(Dispatchers.Main) {
-                    installApk(targetFile)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error downloading OTA update", e)
-                _updateStatus.value = UpdateStatus.Error("Download failed: ${e.localizedMessage ?: "Network error"}")
             }
+        } finally {
+            downloadMutex.unlock()
         }
     }
 

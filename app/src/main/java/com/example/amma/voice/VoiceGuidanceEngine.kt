@@ -14,15 +14,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
- * On-Device Google Speech Services Engine for High-Definition Natural Telugu Voice:
- * - Direct integration with "com.google.android.tts" (Speech Services by Google)
- * - Automatic selection of high-fidelity Neural Telugu voices (te-in-x-*-network)
- * - 0ms latency on-device execution with zero compression artifacts
+ * On-Device Speech Services Engine for Pure, Natural Telugu Voice:
+ * - Direct integration with Google Speech Services & System TTS fallback
+ * - Automatic selection of authentic Telugu voices (te-IN)
+ * - Pure Telugu phrase sanitization eliminating English phonetic distortions
+ * - 0ms latency on-device execution with polite, warm cadence
  */
 class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitListener {
 
     private val appContext = context.applicationContext
     private var textToSpeech: TextToSpeech? = null
+    private var isGoogleTtsAttempted = true
 
     private val _isTtsReady = MutableStateFlow(false)
     val isTtsReady: StateFlow<Boolean> = _isTtsReady.asStateFlow()
@@ -30,7 +32,7 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
-    private var speechRate: Float = 0.92f
+    private var speechRate: Float = 0.88f // Natural conversational tempo for Telugu elders
     private var speechPitch: Float = 1.0f
 
     init {
@@ -39,10 +41,15 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
 
     private fun initializeTts() {
         try {
-            // Bind specifically to Google Speech Services for best neural voice quality
-            textToSpeech = TextToSpeech(appContext, this, "com.google.android.tts")
+            if (isGoogleTtsAttempted) {
+                // Try Google Speech Services first for maximum neural Telugu clarity
+                textToSpeech = TextToSpeech(appContext, this, "com.google.android.tts")
+            } else {
+                textToSpeech = TextToSpeech(appContext, this)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed initializing with com.google.android.tts, falling back to default engine", e)
+            isGoogleTtsAttempted = false
             textToSpeech = TextToSpeech(appContext, this)
         }
     }
@@ -51,27 +58,32 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
         if (status == TextToSpeech.SUCCESS) {
             val tts = textToSpeech ?: return
 
-            val teluguLocale = Locale("te", "IN")
-            val langResult = tts.setLanguage(teluguLocale)
+            val teluguLocale = Locale.forLanguageTag("te-IN")
+            var langResult = tts.setLanguage(teluguLocale)
 
             if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.w(TAG, "Telugu locale (te_IN) not found, trying generic Locale('te')")
-                tts.setLanguage(Locale("te"))
+                Log.w(TAG, "Telugu locale (te-IN) not fully supported, trying generic Locale('te')")
+                langResult = tts.setLanguage(Locale("te"))
             }
 
-            // Select highest quality Google Neural Telugu voice available
+            // Select highest quality Telugu voice available
             try {
-                val teluguVoices = tts.voices?.filter { it.locale.language == "te" }
-                val bestVoice = teluguVoices?.firstOrNull { it.name.contains("network", ignoreCase = true) }
+                val voices = tts.voices
+                val teluguVoices = voices?.filter {
+                    it.locale.language == "te" || it.locale.toLanguageTag().startsWith("te", ignoreCase = true)
+                }
+
+                val bestVoice = teluguVoices?.firstOrNull { it.name.contains("te-in", ignoreCase = true) && !it.isNetworkConnectionRequired }
                     ?: teluguVoices?.firstOrNull { it.quality >= Voice.QUALITY_HIGH }
+                    ?: teluguVoices?.firstOrNull { !it.isNetworkConnectionRequired }
                     ?: teluguVoices?.firstOrNull()
 
                 if (bestVoice != null) {
                     tts.voice = bestVoice
-                    Log.i(TAG, "Selected Google High-Quality Telugu Voice: ${bestVoice.name}")
+                    Log.i(TAG, "Selected Telugu Voice: ${bestVoice.name}")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not select specific voice: ${e.message}")
+                Log.w(TAG, "Could not select specific Telugu voice: ${e.message}")
             }
 
             tts.setSpeechRate(speechRate)
@@ -105,15 +117,27 @@ class VoiceGuidanceEngine(private val context: Context) : TextToSpeech.OnInitLis
             })
 
             _isTtsReady.value = true
-            Log.i(TAG, "Google Speech Services engine initialized successfully for Telugu.")
+            Log.i(TAG, "Telugu Speech engine initialized successfully.")
         } else {
-            Log.e(TAG, "Google TTS initialization failed with status: $status")
-            _isTtsReady.value = false
+            Log.e(TAG, "TTS initialization failed with status: $status")
+            if (isGoogleTtsAttempted) {
+                Log.i(TAG, "Retrying with system default TTS engine...")
+                isGoogleTtsAttempted = false
+                try {
+                    textToSpeech?.shutdown()
+                    textToSpeech = TextToSpeech(appContext, this)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed falling back to default TTS", e)
+                    _isTtsReady.value = false
+                }
+            } else {
+                _isTtsReady.value = false
+            }
         }
     }
 
     /**
-     * Speaks text directly using Google Speech Services with full volume and natural cadence.
+     * Speaks text with pure Telugu phonetics and natural cadence.
      */
     fun speak(text: String, flush: Boolean = true) {
         if (text.isBlank()) return

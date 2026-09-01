@@ -1189,13 +1189,7 @@ private fun DiagnosticsTab(
                                             otaManager.downloadAndInstall(status.info)
                                         }
                                     },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .bounceClick(scaleDown = 0.95f) {
-                                            coroutineScope.launch {
-                                                otaManager.downloadAndInstall(status.info)
-                                            }
-                                        },
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
                                 ) {
@@ -1241,7 +1235,11 @@ private fun DiagnosticsTab(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = if (status.progressPercent >= 100) "Verifying & Installing..." else "Downloading Update...",
+                                            text = when {
+                                                status.progressPercent >= 100 -> "Verifying & Installing..."
+                                                status.downloadedMb > 0.05 -> "Downloading Update..."
+                                                else -> "Connecting to Server..."
+                                            },
                                             fontSize = 13.sp,
                                             color = AmmaTextPrimary,
                                             fontWeight = FontWeight.Bold
