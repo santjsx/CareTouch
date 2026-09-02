@@ -46,6 +46,7 @@ class HomeViewModel : ViewModel() {
     private val _callState = MutableStateFlow<CallState>(CallState.Idle)
     private val _showAdminAuth = MutableStateFlow(false)
     private val _dismissedInitialLogin = MutableStateFlow(false)
+    private val _manualShowLoginSheet = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         combine(contactRepo.contacts, statusEngine.status, contactRepo.settings) { contacts, status, settings ->
@@ -54,10 +55,12 @@ class HomeViewModel : ViewModel() {
         combine(_callState, voiceEngine.isSpeaking, _showAdminAuth) { callState, isSpeaking, showAdmin ->
             Triple(callState, isSpeaking, showAdmin)
         },
-        authRepo.authState,
-        _dismissedInitialLogin
-    ) { (contacts, status, settings), (callState, isSpeaking, showAdmin), authState, dismissed ->
+        combine(authRepo.authState, _dismissedInitialLogin, _manualShowLoginSheet) { authState, dismissed, manualLogin ->
+            Triple(authState, dismissed, manualLogin)
+        }
+    ) { (contacts, status, settings), (callState, isSpeaking, showAdmin), (authState, dismissed, manualLogin) ->
         val showInitial = !settings.hasCompletedInitialLogin && !dismissed && authState !is AuthState.Authenticated
+        val showLogin = (showInitial || manualLogin) && authState !is AuthState.Authenticated
         HomeUiState(
             contacts = contacts,
             status = status,
@@ -67,7 +70,7 @@ class HomeViewModel : ViewModel() {
             isSpeaking = isSpeaking,
             showAdminAuth = showAdmin,
             authState = authState,
-            showInitialLogin = showInitial
+            showInitialLogin = showLogin
         )
     }.stateIn(
         viewModelScope,
@@ -75,10 +78,16 @@ class HomeViewModel : ViewModel() {
         HomeUiState()
     )
 
+    fun openLoginSheet() {
+        haptics.tap()
+        _manualShowLoginSheet.value = true
+    }
+
     fun signInWithGoogle(context: android.content.Context) {
         viewModelScope.launch {
             val result = authRepo.signInWithGoogle(context)
             if (result.isSuccess) {
+                _manualShowLoginSheet.value = false
                 val updated = contactRepo.settings.value.copy(hasCompletedInitialLogin = true)
                 contactRepo.saveSettings(updated)
             }
@@ -87,6 +96,7 @@ class HomeViewModel : ViewModel() {
 
     fun dismissInitialLogin() {
         _dismissedInitialLogin.value = true
+        _manualShowLoginSheet.value = false
         viewModelScope.launch {
             val updated = contactRepo.settings.value.copy(hasCompletedInitialLogin = true)
             contactRepo.saveSettings(updated)

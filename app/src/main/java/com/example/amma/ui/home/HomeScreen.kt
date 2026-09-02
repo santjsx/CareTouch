@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.amma.cloud.auth.AuthState
 import com.example.amma.model.CallState
 import com.example.amma.theme.AmmaBackground
 import com.example.amma.theme.AmmaDimens
@@ -133,21 +135,52 @@ fun HomeScreen(
                             )
                         }
 
-                        // Settings Gear Button -> Opens Admin Panel with Bouncy Micro-interaction
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(AmmaSurfaceElevated)
-                                .bounceClick(scaleDown = 0.88f) { viewModel.openAdminAuth() },
-                            contentAlignment = Alignment.Center
+                        // Right Side Controls: Sign In Button (if not signed in) + Settings Gear
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Settings,
-                                contentDescription = "Admin Settings",
-                                tint = AmmaTextSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            if (uiState.authState !is AuthState.Authenticated) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(AmmaSurfaceElevated)
+                                        .bounceClick(scaleDown = 0.92f) { viewModel.openLoginSheet() }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AccountCircle,
+                                        contentDescription = "Sign In",
+                                        tint = AmmaGreenBright,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "Sign In",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = AmmaTextPrimary
+                                    )
+                                }
+                            }
+
+                            // Settings Gear Button -> Opens Admin Panel with Bouncy Micro-interaction
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AmmaSurfaceElevated)
+                                    .bounceClick(scaleDown = 0.88f) { viewModel.openAdminAuth() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Settings,
+                                    contentDescription = "Admin Settings",
+                                    tint = AmmaTextSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
