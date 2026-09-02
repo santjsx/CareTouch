@@ -310,6 +310,7 @@ object TeluguPhraseResolver {
         if (!isSimAvailable) return "ఫోన్‌లో సిమ్ కార్డు కనిపించడం లేదు."
         return when (grade) {
             SignalGrade.EXCELLENT, SignalGrade.GOOD -> "ఫోన్ సిగ్నల్ చాలా బాగుంది."
+            SignalGrade.MODERATE -> "ఫోన్ సిగ్నల్ పర్వాలేదు, మాట్లాడవచ్చు."
             SignalGrade.POOR -> "సిగ్నల్ తక్కువగా ఉంది."
             SignalGrade.NO_SIGNAL -> "సిగ్నల్ అందడం లేదు."
             SignalGrade.AIRPLANE_MODE -> "ఏరోప్లేన్ మోడ్ ఆన్‌లో ఉంది."

@@ -125,6 +125,8 @@ fun StatusIndicatorRow(
                 SignalData(Color(0xFFFF3B30), 0, 0f, "0 Bars", "No Signal", Icons.Rounded.CellTower)
             status.signalGrade == SignalGrade.POOR ->
                 SignalData(Color(0xFFFF9F0A), 1, 0.25f, "1/4", "Weak", Icons.Rounded.CellTower)
+            status.signalGrade == SignalGrade.MODERATE ->
+                SignalData(Color(0xFFFFD600), 2, 0.50f, "2/4", "Moderate", Icons.Rounded.CellTower) // Amber/Yellow
             status.signalGrade == SignalGrade.GOOD ->
                 SignalData(Color(0xFF00E5FF), 3, 0.75f, "3/4", "Good", Icons.Rounded.CellTower)
             else ->
@@ -161,8 +163,9 @@ fun StatusIndicatorRow(
                 NetworkData(Color(0xFF30D158), true, 0.88f, "Mobile", "Online", Icons.Rounded.Language)
             }
         } else {
-            // Neon Crimson for Disconnected
-            NetworkData(Color(0xFFFF453A), false, 0f, "Offline", "No Internet", Icons.Rounded.WifiOff)
+            // Neon Crimson for Disconnected / Data Denied
+            val label = if (status.isDataDenied) "Denied" else "No Internet"
+            NetworkData(Color(0xFFFF453A), false, 0f, "Offline", label, Icons.Rounded.WifiOff)
         }
 
         val animatedNetColor by animateColorAsState(

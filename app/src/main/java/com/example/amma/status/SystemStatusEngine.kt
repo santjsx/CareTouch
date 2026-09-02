@@ -45,41 +45,16 @@ class SystemStatusEngine(
     private val _status = MutableStateFlow(SystemStatus())
     val status: StateFlow<SystemStatus> = _status.asStateFlow()
 
-    private var timeUpdateJob: Job? = null
+    private var telemetryJob: Job? = null
     private var telephonyCallback: Any? = null
     private var legacyPhoneStateListener: PhoneStateListener? = null
 
-    private val batteryReceiver = object : BroadcastReceiver() {
+    private val systemBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
-                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-                val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                        status == BatteryManager.BATTERY_STATUS_FULL
-
-                val percent = if (level >= 0 && scale > 0) {
-                    ((level.toFloat() / scale.toFloat()) * 100).toInt()
-                } else {
-                    _status.value.batteryPercent
-                }
-
-                val grade = when {
-                    isCharging -> BatteryLevelGrade.CHARGING
-                    percent >= 80 -> BatteryLevelGrade.EXCELLENT
-                    percent >= 50 -> BatteryLevelGrade.GOOD
-                    percent >= 20 -> BatteryLevelGrade.MEDIUM
-                    percent >= 10 -> BatteryLevelGrade.LOW
-                    else -> BatteryLevelGrade.CRITICAL
-                }
-
-                _status.update {
-                    it.copy(
-                        batteryPercent = percent,
-                        isCharging = isCharging,
-                        batteryGrade = grade
-                    )
-                }
+            when (intent?.action) {
+                Intent.ACTION_BATTERY_CHANGED -> handleBatteryIntent(intent)
+                Intent.ACTION_AIRPLANE_MODE_CHANGED -> checkSignalStrength()
+                "android.net.conn.CONNECTIVITY_CHANGE" -> checkNetworkCapabilities()
             }
         }
     }
@@ -96,12 +71,20 @@ class SystemStatusEngine(
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
             checkNetworkCapabilities()
         }
+
+        override fun onUnavailable() {
+            checkNetworkCapabilities()
+        }
     }
 
     fun start() {
-        // Battery receiver
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        appContext.registerReceiver(batteryReceiver, filter)
+        // Broadcast receiver for battery, airplane mode & connectivity
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction("android.net.conn.CONNECTIVITY_CHANGE")
+        }
+        appContext.registerReceiver(systemBroadcastReceiver, filter)
 
         // Connectivity callback
         try {
@@ -113,25 +96,26 @@ class SystemStatusEngine(
             checkNetworkCapabilities()
         }
 
-        // Real-time cellular signal strength monitoring
+        // Real-time cellular signal strength monitoring callback
         registerSignalStrengthListener()
 
         // WhatsApp installation check
         checkWhatsAppInstalled()
 
-        // Time updates
-        startTimeTicker()
+        // Start High-Frequency Telemetry Ticker (Time + Signal + Network Polling)
+        startTelemetryTicker()
 
         // Initial checks
         checkNetworkCapabilities()
         checkSimState()
+        checkSignalStrength()
         updateDateTime()
     }
 
     fun stop() {
-        timeUpdateJob?.cancel()
+        telemetryJob?.cancel()
         try {
-            appContext.unregisterReceiver(batteryReceiver)
+            appContext.unregisterReceiver(systemBroadcastReceiver)
         } catch (e: Exception) {
             // Receiver not registered
         }
@@ -141,6 +125,37 @@ class SystemStatusEngine(
             // Callback not registered
         }
         unregisterSignalStrengthListener()
+    }
+
+    private fun handleBatteryIntent(intent: Intent) {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+
+        val percent = if (level >= 0 && scale > 0) {
+            ((level.toFloat() / scale.toFloat()) * 100).toInt()
+        } else {
+            _status.value.batteryPercent
+        }
+
+        val grade = when {
+            isCharging -> BatteryLevelGrade.CHARGING
+            percent >= 80 -> BatteryLevelGrade.EXCELLENT
+            percent >= 50 -> BatteryLevelGrade.GOOD
+            percent >= 25 -> BatteryLevelGrade.MEDIUM
+            percent >= 15 -> BatteryLevelGrade.LOW
+            else -> BatteryLevelGrade.CRITICAL
+        }
+
+        _status.update {
+            it.copy(
+                batteryPercent = percent,
+                isCharging = isCharging,
+                batteryGrade = grade
+            )
+        }
     }
 
     private fun registerSignalStrengthListener() {
@@ -190,15 +205,16 @@ class SystemStatusEngine(
         }
     }
 
-    private fun updateSignalFromLevel(level: Int) {
+    fun updateSignalFromLevel(level: Int) {
         val hasSim = telephonyManager?.simState == TelephonyManager.SIM_STATE_READY
+        val clampedLevel = level.coerceIn(0, 4)
         val grade = if (!hasSim) {
             SignalGrade.NO_SIGNAL
         } else {
-            when (level) {
+            when (clampedLevel) {
                 0 -> SignalGrade.NO_SIGNAL
                 1 -> SignalGrade.POOR
-                2 -> SignalGrade.POOR
+                2 -> SignalGrade.MODERATE
                 3 -> SignalGrade.GOOD
                 else -> SignalGrade.EXCELLENT
             }
@@ -206,17 +222,53 @@ class SystemStatusEngine(
         _status.update {
             it.copy(
                 isSimAvailable = hasSim,
+                signalBars = if (hasSim) clampedLevel else 0,
                 signalGrade = grade
             )
         }
     }
 
-    private fun startTimeTicker() {
-        timeUpdateJob?.cancel()
-        timeUpdateJob = coroutineScope.launch(Dispatchers.Default) {
+    fun checkSignalStrength() {
+        val tm = telephonyManager ?: return
+        val hasSim = tm.simState == TelephonyManager.SIM_STATE_READY
+        if (!hasSim) {
+            _status.update { it.copy(isSimAvailable = false, signalBars = 0, signalGrade = SignalGrade.NO_SIGNAL) }
+            return
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val sig = tm.signalStrength
+                if (sig != null) {
+                    val cellLevels = sig.cellSignalStrengths
+                    val resolvedLevel = if (cellLevels.isNotEmpty()) {
+                        cellLevels.firstOrNull()?.level ?: sig.level
+                    } else {
+                        sig.level
+                    }
+                    updateSignalFromLevel(resolvedLevel)
+                    return
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val sig = tm.signalStrength
+                if (sig != null) {
+                    updateSignalFromLevel(sig.level)
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error polling signalStrength", e)
+        }
+    }
+
+    private fun startTelemetryTicker() {
+        telemetryJob?.cancel()
+        telemetryJob = coroutineScope.launch(Dispatchers.Default) {
             while (isActive) {
                 updateDateTime()
-                delay(10_000) // Update every 10 seconds
+                checkNetworkCapabilities()
+                checkSignalStrength()
+                delay(1500) // Poll telemetry every 1.5s for instant response to emulator/device changes
             }
         }
     }
@@ -241,23 +293,39 @@ class SystemStatusEngine(
 
     fun checkNetworkCapabilities() {
         val cm = connectivityManager
+        val tm = telephonyManager
+
         if (cm == null) {
-            _status.update { it.copy(isInternetAvailable = false, isWifiConnected = false) }
+            _status.update { it.copy(isInternetAvailable = false, isWifiConnected = false, isDataDenied = true) }
             return
         }
 
         val activeNetwork = cm.activeNetwork
-        val caps = cm.getNetworkCapabilities(activeNetwork)
+        val caps = if (activeNetwork != null) cm.getNetworkCapabilities(activeNetwork) else null
 
-        // Edge Case: Validate that the network has actual IP throughput
-        val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) || activeNetwork != null)
+        val hasInternetCapability = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        val isValidated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        val isNotSuspended = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED) == true
+        } else true
+
         val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val isCellular = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+
+        val mobileDataState = tm?.dataState ?: TelephonyManager.DATA_UNKNOWN
+        val isMobileDataConnected = mobileDataState == TelephonyManager.DATA_CONNECTED
+
+        val hasInternet = (isWifi && hasInternetCapability && isValidated) ||
+                (isCellular && hasInternetCapability && isValidated && isMobileDataConnected) ||
+                (hasInternetCapability && isValidated && isNotSuspended && activeNetwork != null)
+
+        val isDenied = !isWifi && (mobileDataState == TelephonyManager.DATA_DISCONNECTED || !hasInternet)
 
         _status.update {
             it.copy(
                 isInternetAvailable = hasInternet,
-                isWifiConnected = isWifi
+                isWifiConnected = isWifi,
+                isDataDenied = isDenied
             )
         }
     }
@@ -266,33 +334,7 @@ class SystemStatusEngine(
         val tm = telephonyManager
         val simState = tm?.simState ?: TelephonyManager.SIM_STATE_UNKNOWN
         val hasSim = simState == TelephonyManager.SIM_STATE_READY
-
-        val rawLevel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                tm?.signalStrength?.level ?: 4
-            } catch (e: Exception) {
-                4
-            }
-        } else 4
-
-        val grade = if (!hasSim) {
-            SignalGrade.NO_SIGNAL
-        } else {
-            when (rawLevel) {
-                0 -> SignalGrade.NO_SIGNAL
-                1 -> SignalGrade.POOR
-                2 -> SignalGrade.POOR
-                3 -> SignalGrade.GOOD
-                else -> SignalGrade.EXCELLENT
-            }
-        }
-
-        _status.update {
-            it.copy(
-                isSimAvailable = hasSim,
-                signalGrade = grade
-            )
-        }
+        checkSignalStrength()
     }
 
     fun checkWhatsAppInstalled(): Boolean {
