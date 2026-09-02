@@ -18,5 +18,9 @@ data class Contact(
     val isEmergencyContact: Boolean = false
 ) {
     val effectivePronunciation: String
-        get() = if (!customPronunciation.isNullOrBlank()) customPronunciation else displayName
+        get() = if (!customPronunciation.isNullOrBlank() && !customPronunciation.equals("null", ignoreCase = true)) {
+            customPronunciation.trim()
+        } else {
+            displayName
+        }
 }

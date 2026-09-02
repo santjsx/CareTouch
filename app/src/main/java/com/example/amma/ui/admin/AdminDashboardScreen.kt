@@ -1693,14 +1693,19 @@ private fun ContactEditorSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var contactId by remember { mutableStateOf(initialContact.id) }
-    var name by remember { mutableStateOf(initialContact.displayName) }
-    var phone by remember { mutableStateOf(initialContact.phoneNumber) }
-    var whatsapp by remember { mutableStateOf(initialContact.whatsappNumber) }
-    var pronunciation by remember { mutableStateOf(initialContact.customPronunciation ?: "") }
-    var primaryTransport by remember { mutableStateOf(initialContact.primaryTransport) }
-    var isEmergency by remember { mutableStateOf(initialContact.isEmergencyContact) }
-    var photoUri by remember { mutableStateOf(initialContact.photoUri) }
+    var contactId by remember(initialContact.id) { mutableStateOf(initialContact.id) }
+    var name by remember(initialContact.id) { mutableStateOf(initialContact.displayName) }
+    var phone by remember(initialContact.id) { mutableStateOf(initialContact.phoneNumber) }
+    var whatsapp by remember(initialContact.id) { mutableStateOf(initialContact.whatsappNumber) }
+    var pronunciation by remember(initialContact.id) {
+        mutableStateOf(
+            if (initialContact.customPronunciation.isNullOrBlank() || initialContact.customPronunciation.equals("null", ignoreCase = true)) ""
+            else initialContact.customPronunciation.trim()
+        )
+    }
+    var primaryTransport by remember(initialContact.id) { mutableStateOf(initialContact.primaryTransport) }
+    var isEmergency by remember(initialContact.id) { mutableStateOf(initialContact.isEmergencyContact) }
+    var photoUri by remember(initialContact.id) { mutableStateOf(initialContact.photoUri) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -1774,13 +1779,16 @@ private fun ContactEditorSheet(
                                     scaleDown = 0.90f,
                                     onClick = {
                                         if (isFormValid) {
+                                            val cleanPronunciation = pronunciation.trim().let {
+                                                if (it.isEmpty() || it.equals("null", ignoreCase = true)) null else it
+                                            }
                                             onSave(
                                                 initialContact.copy(
                                                     displayName = name.trim(),
                                                     relationship = "",
                                                     phoneNumber = phone.trim(),
                                                     whatsappNumber = if (whatsapp.isBlank()) phone.trim() else whatsapp.trim(),
-                                                    customPronunciation = pronunciation.trim().ifEmpty { null },
+                                                    customPronunciation = cleanPronunciation,
                                                     primaryTransport = primaryTransport,
                                                     isEmergencyContact = isEmergency,
                                                     photoUri = photoUri

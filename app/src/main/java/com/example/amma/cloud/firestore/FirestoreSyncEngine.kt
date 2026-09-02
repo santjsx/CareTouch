@@ -72,6 +72,9 @@ class FirestoreSyncEngine(
                     try {
                         val cloudContacts = snapshots.documents.mapNotNull { doc ->
                             try {
+                                val rawPronunciation = doc.getString("customPronunciation")?.trim()
+                                val cleanPronunciation = if (rawPronunciation.isNullOrBlank() || rawPronunciation.equals("null", ignoreCase = true)) null else rawPronunciation
+
                                 Contact(
                                     id = doc.id,
                                     displayName = doc.getString("displayName") ?: "",
@@ -82,7 +85,7 @@ class FirestoreSyncEngine(
                                     primaryTransport = CallTransport.valueOf(doc.getString("primaryTransport") ?: CallTransport.CELLULAR.name),
                                     allowWhatsappAudio = doc.getBoolean("allowWhatsappAudio") ?: true,
                                     allowWhatsappVideo = doc.getBoolean("allowWhatsappVideo") ?: true,
-                                    customPronunciation = doc.getString("customPronunciation"),
+                                    customPronunciation = cleanPronunciation,
                                     sortOrder = (doc.getLong("sortOrder") ?: 0L).toInt(),
                                     isEmergencyContact = doc.getBoolean("isEmergencyContact") ?: false
                                 )
@@ -119,23 +122,28 @@ class FirestoreSyncEngine(
         try {
             _isSyncing.value = true
             val docRef = db.collection("users").document(userId).collection("contacts").document(contact.id)
+            val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
+                null
+            } else {
+                contact.customPronunciation.trim()
+            }
             val data = hashMapOf(
-                "displayName" to contact.displayName,
-                "relationship" to contact.relationship,
+                "displayName" to contact.displayName.trim(),
+                "relationship" to contact.relationship.trim(),
                 "photoUri" to contact.photoUri,
-                "phoneNumber" to contact.phoneNumber,
-                "whatsappNumber" to contact.whatsappNumber,
+                "phoneNumber" to contact.phoneNumber.trim(),
+                "whatsappNumber" to contact.whatsappNumber.trim(),
                 "primaryTransport" to contact.primaryTransport.name,
                 "allowWhatsappAudio" to contact.allowWhatsappAudio,
                 "allowWhatsappVideo" to contact.allowWhatsappVideo,
-                "customPronunciation" to contact.customPronunciation,
+                "customPronunciation" to cleanPronunciation,
                 "sortOrder" to contact.sortOrder,
                 "isEmergencyContact" to contact.isEmergencyContact,
                 "updatedAt" to com.google.firebase.Timestamp.now()
             )
             docRef.set(data, SetOptions.merge()).await()
             _lastSyncTimestamp.value = System.currentTimeMillis()
-            Log.i(TAG, "Successfully pushed contact ${contact.id} to Firestore")
+            Log.i(TAG, "Successfully pushed contact ${contact.id} (pronunciation: $cleanPronunciation) to Firestore")
         } catch (e: Exception) {
             Log.e(TAG, "Error pushing contact to Firestore", e)
         } finally {
@@ -164,16 +172,21 @@ class FirestoreSyncEngine(
             val batch = db.batch()
             for (contact in currentLocal) {
                 val docRef = db.collection("users").document(userId).collection("contacts").document(contact.id)
+                val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
+                    null
+                } else {
+                    contact.customPronunciation.trim()
+                }
                 val data = hashMapOf(
-                    "displayName" to contact.displayName,
-                    "relationship" to contact.relationship,
+                    "displayName" to contact.displayName.trim(),
+                    "relationship" to contact.relationship.trim(),
                     "photoUri" to contact.photoUri,
-                    "phoneNumber" to contact.phoneNumber,
-                    "whatsappNumber" to contact.whatsappNumber,
+                    "phoneNumber" to contact.phoneNumber.trim(),
+                    "whatsappNumber" to contact.whatsappNumber.trim(),
                     "primaryTransport" to contact.primaryTransport.name,
                     "allowWhatsappAudio" to contact.allowWhatsappAudio,
                     "allowWhatsappVideo" to contact.allowWhatsappVideo,
-                    "customPronunciation" to contact.customPronunciation,
+                    "customPronunciation" to cleanPronunciation,
                     "sortOrder" to contact.sortOrder,
                     "isEmergencyContact" to contact.isEmergencyContact,
                     "updatedAt" to com.google.firebase.Timestamp.now()

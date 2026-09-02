@@ -55,6 +55,11 @@ class ContactRepository(context: Context) {
                         rawPhotoUri
                     }
 
+                    val rawPronunciation = if (obj.has("customPronunciation") && !obj.isNull("customPronunciation")) {
+                        obj.optString("customPronunciation").trim()
+                    } else null
+                    val cleanPronunciation = if (rawPronunciation.isNullOrBlank() || rawPronunciation.equals("null", ignoreCase = true)) null else rawPronunciation
+
                     list.add(
                         Contact(
                             id = obj.optString("id"),
@@ -66,7 +71,7 @@ class ContactRepository(context: Context) {
                             primaryTransport = CallTransport.valueOf(obj.optString("primaryTransport", CallTransport.CELLULAR.name)),
                             allowWhatsappAudio = obj.optBoolean("allowWhatsappAudio", true),
                             allowWhatsappVideo = obj.optBoolean("allowWhatsappVideo", true),
-                            customPronunciation = if (obj.has("customPronunciation")) obj.getString("customPronunciation").trim() else null,
+                            customPronunciation = cleanPronunciation,
                             sortOrder = obj.optInt("sortOrder", i),
                             isEmergencyContact = obj.optBoolean("isEmergencyContact", false)
                         )
@@ -180,11 +185,18 @@ class ContactRepository(context: Context) {
         // Edge Case 2: Persist photo to internal app storage so URI permissions never expire across reboots
         val localPhotoUri = persistPhotoLocally(contact.photoUri, contact.id)
 
+        val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
+            null
+        } else {
+            contact.customPronunciation.trim()
+        }
+
         val sanitizedContact = contact.copy(
             displayName = cleanName,
             phoneNumber = cleanPhone,
             relationship = contact.relationship.trim(),
             whatsappNumber = contact.whatsappNumber.trim().ifBlank { cleanPhone },
+            customPronunciation = cleanPronunciation,
             photoUri = localPhotoUri
         )
 
