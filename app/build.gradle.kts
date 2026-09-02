@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.amma"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.1.3"
+        versionCode = 15
+        versionName = "1.1.4"
     }
 
     signingConfigs {
@@ -118,6 +118,7 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
+  implementation(libs.firebase.storage)
 
   // Google Credential Manager & Play Services Auth (Google Drive API / Sign-In)
   implementation(libs.androidx.credentials)

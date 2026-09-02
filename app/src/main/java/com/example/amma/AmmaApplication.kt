@@ -51,6 +51,9 @@ class AmmaApplication : Application() {
     lateinit var googleDriveStorageManager: GoogleDriveStorageManager
         private set
 
+    lateinit var firebaseStorageManager: com.example.amma.cloud.storage.FirebaseStorageManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -62,11 +65,12 @@ class AmmaApplication : Application() {
         hapticsManager = HapticsManager(this)
         soundCueManager = SoundCueManager()
 
-        // Cloud Integrations: Auth, Firestore, Google Drive & Cloudflare R2
+        // Cloud Integrations: Auth, Firestore, Google Drive, Firebase Storage & Cloudflare R2
         authRepository = AuthRepository(this)
         firestoreSyncEngine = FirestoreSyncEngine(this, contactRepository, applicationScope)
         r2StorageManager = R2StorageManager(this)
         googleDriveStorageManager = GoogleDriveStorageManager(this)
+        firebaseStorageManager = com.example.amma.cloud.storage.FirebaseStorageManager(this)
 
         // Automatically start Firestore sync when authenticated
         applicationScope.launch {

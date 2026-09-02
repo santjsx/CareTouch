@@ -41,6 +41,7 @@ class AdminViewModel : ViewModel() {
     private val firestoreSync = app.firestoreSyncEngine
     private val r2Manager = app.r2StorageManager
     private val googleDriveManager = app.googleDriveStorageManager
+    private val firebaseStorageManager = app.firebaseStorageManager
 
     private val _editingContact = MutableStateFlow<Contact?>(null)
     private val _isAddContactOpen = MutableStateFlow(false)
@@ -49,13 +50,13 @@ class AdminViewModel : ViewModel() {
         combine(contactRepo.contacts, contactRepo.settings, statusEngine.status) { contacts, settings, status ->
             Triple(contacts, settings, status)
         },
+        combine(voiceEngine.isTtsReady, _editingContact, _isAddContactOpen) { ttsReady, editing, isAddOpen ->
+            Triple(ttsReady, editing, isAddOpen)
+        },
         combine(authRepo.authState, r2Manager.config, firestoreSync.isSyncing, firestoreSync.lastSyncTimestamp) { auth, r2, syncing, lastSync ->
             Tuple4(auth, r2, syncing, lastSync)
-        },
-        voiceEngine.isTtsReady,
-        _editingContact,
-        _isAddContactOpen
-    ) { (contacts, settings, status), (auth, r2, syncing, lastSync), ttsReady, editing, isAddOpen ->
+        }
+    ) { (contacts, settings, status), (ttsReady, editing, isAddOpen), (auth, r2, syncing, lastSync) ->
         AdminUiState(
             contacts = contacts,
             settings = settings,
@@ -102,18 +103,20 @@ class AdminViewModel : ViewModel() {
             contactRepo.saveContact(contact)
             closeContactDialog()
 
-            // 2. If authenticated, upload photo to Google Drive (or R2) and sync to Firestore
+            // 2. If authenticated, upload photo and sync contact to Firestore
             val currentUser = authRepo.currentUserId
             if (currentUser != null) {
-                var finalContact = contact
-                val photoUri = contact.photoUri
+                var finalContact = contactRepo.contacts.value.find { it.id == contact.id } ?: contact
+                val photoUri = finalContact.photoUri
 
                 if (!photoUri.isNullOrBlank() && !photoUri.startsWith("http")) {
+                    // Upload to caregiver's personal Google Drive (100% Free, uses 15GB personal quota, 0 Blaze plan needed)
+                    // with fallback to Cloudflare R2 if configured
                     val cloudUrl = googleDriveManager.uploadContactPhoto(photoUri, contact.id)
                         ?: r2Manager.uploadContactPhoto(photoUri, contact.id, currentUser)
 
                     if (cloudUrl != null) {
-                        finalContact = contact.copy(photoUri = cloudUrl)
+                        finalContact = finalContact.copy(photoUri = cloudUrl)
                         contactRepo.saveContact(finalContact)
                     }
                 }
