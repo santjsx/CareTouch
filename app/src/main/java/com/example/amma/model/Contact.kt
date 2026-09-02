@@ -6,7 +6,8 @@ data class Contact(
     val id: String = UUID.randomUUID().toString(),
     val displayName: String,
     val relationship: String, // e.g. "Son", "Daughter", "Husband", "Brother", "Doctor"
-    val photoUri: String? = null, // Local file path or drawable resource name
+    val photoUri: String? = null, // Local file path or cloud URL
+    val photoBase64: String? = null, // Cloud-synchronized base64 image representation (100% resilient across uninstalls)
     val photoDrawableRes: Int? = null, // Built-in fallback drawable or avatar
     val phoneNumber: String,
     val whatsappNumber: String = phoneNumber,

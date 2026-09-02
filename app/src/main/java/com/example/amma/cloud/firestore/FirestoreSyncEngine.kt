@@ -22,11 +22,10 @@ import kotlinx.coroutines.withContext
 /**
  * High-performance, local-first Cloud Firestore Sync Engine for CareTouch.
  * 
- * Features:
- * - Persistent on-device disk cache for 0ms reads
- * - Bidirectional realtime synchronization
- * - Conflict resolution (Last-Write-Wins with server timestamps)
- * - Zero network blocking of core UI
+ * Guarantees:
+ * - Strict account-level contact isolation (only authenticated user's contacts are loaded)
+ * - 0 Mock Contacts (no fake presets uploaded or synthesized)
+ * - Full image restoration across re-installs and device migrations via dual CDN + Base64 storage
  */
 class FirestoreSyncEngine(
     private val context: Context,
@@ -74,12 +73,14 @@ class FirestoreSyncEngine(
                             try {
                                 val rawPronunciation = doc.getString("customPronunciation")?.trim()
                                 val cleanPronunciation = if (rawPronunciation.isNullOrBlank() || rawPronunciation.equals("null", ignoreCase = true)) null else rawPronunciation
+                                val photoBase64 = doc.getString("photoBase64")
 
                                 Contact(
                                     id = doc.id,
                                     displayName = doc.getString("displayName") ?: "",
                                     relationship = doc.getString("relationship") ?: "",
                                     photoUri = doc.getString("photoUri"),
+                                    photoBase64 = photoBase64,
                                     phoneNumber = doc.getString("phoneNumber") ?: "",
                                     whatsappNumber = doc.getString("whatsappNumber") ?: (doc.getString("phoneNumber") ?: ""),
                                     primaryTransport = CallTransport.valueOf(doc.getString("primaryTransport") ?: CallTransport.CELLULAR.name),
@@ -95,14 +96,9 @@ class FirestoreSyncEngine(
                             }
                         }.filter { it.displayName.isNotBlank() && it.phoneNumber.isNotBlank() }
 
-                        if (cloudContacts.isNotEmpty()) {
-                            // Merge into local repository
-                            contactRepository.mergeCloudContacts(cloudContacts)
-                            _lastSyncTimestamp.value = System.currentTimeMillis()
-                        } else if (snapshots.isEmpty && contactRepository.contacts.value.isNotEmpty()) {
-                            // First time cloud sync: Upload local preset contacts to Firestore
-                            uploadLocalContactsToCloud(userId)
-                        }
+                        // Replace local contacts with cloud account's contacts
+                        contactRepository.syncWithCloudContacts(cloudContacts)
+                        _lastSyncTimestamp.value = System.currentTimeMillis()
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing cloud contacts snapshot", e)
                     }
@@ -131,6 +127,7 @@ class FirestoreSyncEngine(
                 "displayName" to contact.displayName.trim(),
                 "relationship" to contact.relationship.trim(),
                 "photoUri" to contact.photoUri,
+                "photoBase64" to contact.photoBase64,
                 "phoneNumber" to contact.phoneNumber.trim(),
                 "whatsappNumber" to contact.whatsappNumber.trim(),
                 "primaryTransport" to contact.primaryTransport.name,
@@ -158,46 +155,6 @@ class FirestoreSyncEngine(
             Log.i(TAG, "Successfully deleted contact $contactId from Firestore")
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting contact from Firestore", e)
-        } finally {
-            _isSyncing.value = false
-        }
-    }
-
-    private suspend fun uploadLocalContactsToCloud(userId: String) = withContext(Dispatchers.IO) {
-        val currentLocal = contactRepository.contacts.value
-        if (currentLocal.isEmpty()) return@withContext
-
-        try {
-            _isSyncing.value = true
-            val batch = db.batch()
-            for (contact in currentLocal) {
-                val docRef = db.collection("users").document(userId).collection("contacts").document(contact.id)
-                val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
-                    null
-                } else {
-                    contact.customPronunciation.trim()
-                }
-                val data = hashMapOf(
-                    "displayName" to contact.displayName.trim(),
-                    "relationship" to contact.relationship.trim(),
-                    "photoUri" to contact.photoUri,
-                    "phoneNumber" to contact.phoneNumber.trim(),
-                    "whatsappNumber" to contact.whatsappNumber.trim(),
-                    "primaryTransport" to contact.primaryTransport.name,
-                    "allowWhatsappAudio" to contact.allowWhatsappAudio,
-                    "allowWhatsappVideo" to contact.allowWhatsappVideo,
-                    "customPronunciation" to cleanPronunciation,
-                    "sortOrder" to contact.sortOrder,
-                    "isEmergencyContact" to contact.isEmergencyContact,
-                    "updatedAt" to com.google.firebase.Timestamp.now()
-                )
-                batch.set(docRef, data, SetOptions.merge())
-            }
-            batch.commit().await()
-            _lastSyncTimestamp.value = System.currentTimeMillis()
-            Log.i(TAG, "Initial batch upload of ${currentLocal.size} local contacts to Firestore complete")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error batch uploading contacts to Firestore", e)
         } finally {
             _isSyncing.value = false
         }

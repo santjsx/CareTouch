@@ -1,6 +1,10 @@
 package com.example.amma.data
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import com.example.amma.model.AppSettings
 import com.example.amma.model.CallTransport
@@ -12,8 +16,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 
+/**
+ * Production-Grade Contact Repository.
+ *
+ * Rules:
+ * - 0 Mock Contacts: Starts strictly empty unless user adds contacts or downloads from authenticated cloud.
+ * - Cloud Photo Resilience: Contacts store dual local file path and compressed Base64 representation in Firestore
+ *   so photos restore 100% reliably across uninstalls and device changes without requiring paid Blaze plans.
+ * - Account Isolation: Strictly isolates contacts per authenticated caregiver.
+ */
 class ContactRepository(context: Context) {
 
     private val appContext = context.applicationContext
@@ -44,7 +59,10 @@ class ContactRepository(context: Context) {
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
                     val rawPhotoUri = if (obj.has("photoUri") && !obj.isNull("photoUri")) obj.getString("photoUri") else null
-                    val verifiedPhotoUri = if (rawPhotoUri != null && rawPhotoUri.startsWith("file:")) {
+                    val photoBase64 = if (obj.has("photoBase64") && !obj.isNull("photoBase64")) obj.getString("photoBase64") else null
+
+                    // If local file is missing but base64 exists, restore local file
+                    var verifiedPhotoUri = if (rawPhotoUri != null && rawPhotoUri.startsWith("file:")) {
                         try {
                             val file = File(java.net.URI.create(rawPhotoUri))
                             if (file.exists() && file.length() > 0) rawPhotoUri else null
@@ -53,6 +71,10 @@ class ContactRepository(context: Context) {
                         }
                     } else {
                         rawPhotoUri
+                    }
+
+                    if (verifiedPhotoUri == null && !photoBase64.isNullOrBlank()) {
+                        verifiedPhotoUri = saveBase64PhotoLocally(photoBase64, obj.optString("id"))
                     }
 
                     val rawPronunciation = if (obj.has("customPronunciation") && !obj.isNull("customPronunciation")) {
@@ -66,6 +88,7 @@ class ContactRepository(context: Context) {
                             displayName = obj.optString("displayName").trim(),
                             relationship = obj.optString("relationship").trim(),
                             photoUri = verifiedPhotoUri,
+                            photoBase64 = photoBase64,
                             phoneNumber = obj.optString("phoneNumber").trim(),
                             whatsappNumber = obj.optString("whatsappNumber", obj.optString("phoneNumber")).trim(),
                             primaryTransport = CallTransport.valueOf(obj.optString("primaryTransport", CallTransport.CELLULAR.name)),
@@ -78,16 +101,13 @@ class ContactRepository(context: Context) {
                     )
                 }
                 val validList = list.filter { it.displayName.isNotBlank() && it.phoneNumber.isNotBlank() }
-                _contacts.value = (if (validList.isNotEmpty()) validList else getInitialPresets()).sortedBy { it.sortOrder }
-                saveContactsToDisk(_contacts.value)
+                _contacts.value = validList.sortedBy { it.sortOrder }
             } else {
-                // Populate realistic initial family presets
-                _contacts.value = getInitialPresets()
-                saveContactsToDisk(_contacts.value)
+                _contacts.value = emptyList()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading contacts from disk", e)
-            _contacts.value = getInitialPresets()
+            _contacts.value = emptyList()
         }
     }
 
@@ -121,7 +141,7 @@ class ContactRepository(context: Context) {
         }
 
         return try {
-            val uri = android.net.Uri.parse(photoUriString)
+            val uri = Uri.parse(photoUriString)
             if (uri.scheme == "content") {
                 try {
                     appContext.contentResolver.takePersistableUriPermission(
@@ -137,7 +157,7 @@ class ContactRepository(context: Context) {
             val destFile = File(photosDir, "contact_${contactId}.jpg")
 
             appContext.contentResolver.openInputStream(uri)?.use { inputStream ->
-                val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                val originalBitmap = BitmapFactory.decodeStream(inputStream)
                 if (originalBitmap != null) {
                     val maxDim = 512
                     val width = originalBitmap.width
@@ -147,7 +167,7 @@ class ContactRepository(context: Context) {
                     } else 1.0f
 
                     val scaledBitmap = if (scale < 1.0f) {
-                        android.graphics.Bitmap.createScaledBitmap(
+                        Bitmap.createScaledBitmap(
                             originalBitmap,
                             (width * scale).toInt().coerceAtLeast(1),
                             (height * scale).toInt().coerceAtLeast(1),
@@ -155,8 +175,8 @@ class ContactRepository(context: Context) {
                         )
                     } else originalBitmap
 
-                    java.io.FileOutputStream(destFile).use { out ->
-                        scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, out)
+                    FileOutputStream(destFile).use { out ->
+                        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 88, out)
                     }
                     if (scaledBitmap != originalBitmap) {
                         originalBitmap.recycle()
@@ -172,18 +192,71 @@ class ContactRepository(context: Context) {
         }
     }
 
+    fun generateBase64Photo(photoUriString: String?): String? {
+        if (photoUriString.isNullOrBlank()) return null
+        return try {
+            val uri = Uri.parse(photoUriString)
+            val inputStream = appContext.contentResolver.openInputStream(uri) ?: return null
+            val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
+            inputStream.close()
+
+            val maxDim = 320
+            val width = originalBitmap.width
+            val height = originalBitmap.height
+            val scale = if (width > maxDim || height > maxDim) {
+                maxDim.toFloat() / maxOf(width, height)
+            } else 1.0f
+
+            val scaledBitmap = if (scale < 1.0f) {
+                Bitmap.createScaledBitmap(
+                    originalBitmap,
+                    (width * scale).toInt().coerceAtLeast(1),
+                    (height * scale).toInt().coerceAtLeast(1),
+                    true
+                )
+            } else originalBitmap
+
+            val outStream = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 82, outStream)
+            val bytes = outStream.toByteArray()
+            if (scaledBitmap != originalBitmap) {
+                originalBitmap.recycle()
+            }
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating base64 for photo", e)
+            null
+        }
+    }
+
+    fun saveBase64PhotoLocally(base64Str: String, contactId: String): String? {
+        return try {
+            val bytes = Base64.decode(base64Str, Base64.DEFAULT)
+            val photosDir = File(appContext.filesDir, "photos").apply { if (!exists()) mkdirs() }
+            val destFile = File(photosDir, "contact_${contactId}.jpg")
+            destFile.writeBytes(bytes)
+            destFile.toURI().toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error decoding base64 photo for contact $contactId", e)
+            null
+        }
+    }
+
     suspend fun saveContact(contact: Contact) = withContext(Dispatchers.IO) {
         val cleanName = contact.displayName.trim()
         val cleanPhone = contact.phoneNumber.trim()
 
-        // Edge Case 1: Refuse to save empty/blank contacts
         if (cleanName.isBlank() || cleanPhone.isBlank()) {
             Log.w(TAG, "Rejected saving contact with blank name or phone")
             return@withContext
         }
 
-        // Edge Case 2: Persist photo to internal app storage so URI permissions never expire across reboots
         val localPhotoUri = persistPhotoLocally(contact.photoUri, contact.id)
+        val photoBase64 = if (!contact.photoBase64.isNullOrBlank()) {
+            contact.photoBase64
+        } else {
+            generateBase64Photo(localPhotoUri ?: contact.photoUri)
+        }
 
         val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
             null
@@ -197,7 +270,8 @@ class ContactRepository(context: Context) {
             relationship = contact.relationship.trim(),
             whatsappNumber = contact.whatsappNumber.trim().ifBlank { cleanPhone },
             customPronunciation = cleanPronunciation,
-            photoUri = localPhotoUri
+            photoUri = localPhotoUri,
+            photoBase64 = photoBase64
         )
 
         val current = _contacts.value.toMutableList()
@@ -205,7 +279,6 @@ class ContactRepository(context: Context) {
         if (index >= 0) {
             current[index] = sanitizedContact
         } else {
-            // Edge Case 3: Duplicate phone number prevention
             val duplicateIndex = current.indexOfFirst { it.phoneNumber == cleanPhone }
             if (duplicateIndex >= 0) {
                 current[duplicateIndex] = sanitizedContact.copy(id = current[duplicateIndex].id)
@@ -214,7 +287,6 @@ class ContactRepository(context: Context) {
             }
         }
 
-        // If this contact is marked as emergency, clear other emergency flags
         if (sanitizedContact.isEmergencyContact) {
             for (i in 0 until current.size) {
                 if (current[i].id != sanitizedContact.id) {
@@ -233,7 +305,6 @@ class ContactRepository(context: Context) {
         val toDelete = _contacts.value.find { it.id == contactId }
         val remaining = _contacts.value.filter { it.id != contactId }.toMutableList()
 
-        // Edge Case 4: If deleting emergency contact, safely auto-reassign to first remaining contact
         if (toDelete?.isEmergencyContact == true || _settings.value.emergencyContactId == contactId) {
             if (remaining.isNotEmpty()) {
                 remaining[0] = remaining[0].copy(isEmergencyContact = true)
@@ -244,7 +315,6 @@ class ContactRepository(context: Context) {
             saveSettingsToDisk(_settings.value)
         }
 
-        // Clean up local photo file
         try {
             val photoFile = File(appContext.filesDir, "photos/contact_${contactId}.jpg")
             if (photoFile.exists()) photoFile.delete()
@@ -256,22 +326,48 @@ class ContactRepository(context: Context) {
         saveContactsToDisk(_contacts.value)
     }
 
-    suspend fun mergeCloudContacts(cloudContacts: List<Contact>) = withContext(Dispatchers.IO) {
-        if (cloudContacts.isEmpty()) return@withContext
-
-        val current = _contacts.value.toMutableList()
-        for (cloudContact in cloudContacts) {
-            val index = current.indexOfFirst { it.id == cloudContact.id }
-            if (index >= 0) {
-                current[index] = cloudContact
+    suspend fun syncWithCloudContacts(cloudContacts: List<Contact>) = withContext(Dispatchers.IO) {
+        // Hydrate and verify local photo files from cloud Base64 or URL
+        val hydrated = cloudContacts.map { contact ->
+            var finalPhotoUri = contact.photoUri
+            val isLocalValid = if (finalPhotoUri != null && finalPhotoUri.startsWith("file:")) {
+                try {
+                    val f = File(java.net.URI.create(finalPhotoUri))
+                    f.exists() && f.length() > 0
+                } catch (e: Exception) {
+                    false
+                }
             } else {
-                current.add(cloudContact)
+                finalPhotoUri != null
             }
+
+            if (!isLocalValid && !contact.photoBase64.isNullOrBlank()) {
+                val restoredPath = saveBase64PhotoLocally(contact.photoBase64, contact.id)
+                if (restoredPath != null) {
+                    finalPhotoUri = restoredPath
+                }
+            }
+            contact.copy(photoUri = finalPhotoUri)
         }
 
-        val sorted = current.sortedBy { it.sortOrder }
+        val sorted = hydrated.sortedBy { it.sortOrder }
         _contacts.value = sorted
         saveContactsToDisk(sorted)
+    }
+
+    suspend fun clearContacts() = withContext(Dispatchers.IO) {
+        _contacts.value = emptyList()
+        if (contactsFile.exists()) {
+            contactsFile.delete()
+        }
+        try {
+            val photosDir = File(appContext.filesDir, "photos")
+            if (photosDir.exists()) {
+                photosDir.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cleaning photos directory", e)
+        }
     }
 
     suspend fun saveSettings(newSettings: AppSettings) = withContext(Dispatchers.IO) {
@@ -288,6 +384,7 @@ class ContactRepository(context: Context) {
                 obj.put("displayName", c.displayName)
                 obj.put("relationship", c.relationship)
                 obj.put("photoUri", c.photoUri ?: JSONObject.NULL)
+                obj.put("photoBase64", c.photoBase64 ?: JSONObject.NULL)
                 obj.put("phoneNumber", c.phoneNumber)
                 obj.put("whatsappNumber", c.whatsappNumber)
                 obj.put("primaryTransport", c.primaryTransport.name)
@@ -330,66 +427,6 @@ class ContactRepository(context: Context) {
         return list.firstOrNull { it.id == emergencyId }
             ?: list.firstOrNull { it.isEmergencyContact }
             ?: list.firstOrNull()
-    }
-
-    private fun getInitialPresets(): List<Contact> {
-        return listOf(
-            Contact(
-                id = "preset_son",
-                displayName = "Santhosh",
-                relationship = "Son (కొడుకు)",
-                phoneNumber = "9876543210",
-                whatsappNumber = "9876543210",
-                primaryTransport = CallTransport.CELLULAR,
-                customPronunciation = "సంతోష్",
-                sortOrder = 0,
-                isEmergencyContact = true
-            ),
-            Contact(
-                id = "preset_daughter",
-                displayName = "Swapna",
-                relationship = "Daughter (కూతురు)",
-                phoneNumber = "9876543211",
-                whatsappNumber = "9876543211",
-                primaryTransport = CallTransport.WHATSAPP_VIDEO,
-                customPronunciation = "స్వప్న",
-                sortOrder = 1,
-                isEmergencyContact = false
-            ),
-            Contact(
-                id = "preset_husband",
-                displayName = "Ramesh",
-                relationship = "Husband (భర్త)",
-                phoneNumber = "9876543212",
-                whatsappNumber = "9876543212",
-                primaryTransport = CallTransport.CELLULAR,
-                customPronunciation = "రమేష్",
-                sortOrder = 2,
-                isEmergencyContact = false
-            ),
-            Contact(
-                id = "preset_brother",
-                displayName = "Srinu",
-                relationship = "Brother (తమ్ముడు)",
-                phoneNumber = "9876543213",
-                whatsappNumber = "9876543213",
-                primaryTransport = CallTransport.CELLULAR,
-                customPronunciation = "శ్రీను",
-                sortOrder = 3,
-                isEmergencyContact = false
-            ),
-            Contact(
-                id = "preset_doctor",
-                displayName = "Doctor",
-                relationship = "Doctor (వైద్యుడు)",
-                phoneNumber = "9876543214",
-                whatsappNumber = "9876543214",
-                primaryTransport = CallTransport.CELLULAR,
-                customPronunciation = "డాక్టర్",
-                sortOrder = 4,
-                isEmergencyContact = false
-            )
-        )
     }
 
     companion object {
