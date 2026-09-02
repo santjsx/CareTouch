@@ -1,14 +1,12 @@
 package com.example.amma.data
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Base64
 import android.util.Log
 import com.example.amma.model.AppSettings
 import com.example.amma.model.CallTransport
 import com.example.amma.model.Contact
+import com.example.amma.util.PhotoStorageHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,14 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Production-Grade Contact Repository.
  *
- * Rules:
+ * Guarantees:
  * - 0 Mock Contacts: Starts strictly empty unless user adds contacts or downloads from authenticated cloud.
  * - Cloud Photo Resilience: Contacts store dual local file path and compressed Base64 representation in Firestore
  *   so photos restore 100% reliably across uninstalls and device changes without requiring paid Blaze plans.
@@ -61,20 +57,20 @@ class ContactRepository(context: Context) {
                     val rawPhotoUri = if (obj.has("photoUri") && !obj.isNull("photoUri")) obj.getString("photoUri") else null
                     val photoBase64 = if (obj.has("photoBase64") && !obj.isNull("photoBase64")) obj.getString("photoBase64") else null
 
-                    // If local file is missing but base64 exists, restore local file
-                    var verifiedPhotoUri = if (rawPhotoUri != null && rawPhotoUri.startsWith("file:")) {
-                        try {
-                            val file = File(java.net.URI.create(rawPhotoUri))
-                            if (file.exists() && file.length() > 0) rawPhotoUri else null
-                        } catch (e: Exception) {
-                            null
+                    // Verify if local file exists; if missing on reinstall, immediately decode from Base64
+                    var verifiedPhotoUri = rawPhotoUri
+                    val hasValidFile = if (!rawPhotoUri.isNullOrBlank()) {
+                        val clean = when {
+                            rawPhotoUri.startsWith("file://") -> rawPhotoUri.removePrefix("file://")
+                            rawPhotoUri.startsWith("file:") -> rawPhotoUri.removePrefix("file:")
+                            else -> rawPhotoUri
                         }
-                    } else {
-                        rawPhotoUri
-                    }
+                        val f = File(clean)
+                        f.exists() && f.length() > 0
+                    } else false
 
-                    if (verifiedPhotoUri == null && !photoBase64.isNullOrBlank()) {
-                        verifiedPhotoUri = saveBase64PhotoLocally(photoBase64, obj.optString("id"))
+                    if (!hasValidFile && !photoBase64.isNullOrBlank()) {
+                        verifiedPhotoUri = PhotoStorageHelper.decodeBase64ToDisk(appContext, photoBase64, obj.optString("id"))
                     }
 
                     val rawPronunciation = if (obj.has("customPronunciation") && !obj.isNull("customPronunciation")) {
@@ -136,109 +132,16 @@ class ContactRepository(context: Context) {
 
     fun persistPhotoLocally(photoUriString: String?, contactId: String): String? {
         if (photoUriString.isNullOrBlank()) return null
-        if (photoUriString.startsWith("file:") && photoUriString.contains("photos/contact_")) {
-            return photoUriString // Already persisted in private storage
-        }
-
-        return try {
-            val uri = Uri.parse(photoUriString)
-            if (uri.scheme == "content") {
-                try {
-                    appContext.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    )
-                } catch (e: Exception) {
-                    // Not all content URIs support persistable permissions
-                }
+        val uri = Uri.parse(photoUriString)
+        return if (uri.scheme == "content") {
+            PhotoStorageHelper.savePhotoLocally(appContext, uri, contactId)
+        } else {
+            val clean = when {
+                photoUriString.startsWith("file://") -> photoUriString.removePrefix("file://")
+                photoUriString.startsWith("file:") -> photoUriString.removePrefix("file:")
+                else -> photoUriString
             }
-
-            val photosDir = File(appContext.filesDir, "photos").apply { if (!exists()) mkdirs() }
-            val destFile = File(photosDir, "contact_${contactId}.jpg")
-
-            appContext.contentResolver.openInputStream(uri)?.use { inputStream ->
-                val originalBitmap = BitmapFactory.decodeStream(inputStream)
-                if (originalBitmap != null) {
-                    val maxDim = 512
-                    val width = originalBitmap.width
-                    val height = originalBitmap.height
-                    val scale = if (width > maxDim || height > maxDim) {
-                        maxDim.toFloat() / maxOf(width, height)
-                    } else 1.0f
-
-                    val scaledBitmap = if (scale < 1.0f) {
-                        Bitmap.createScaledBitmap(
-                            originalBitmap,
-                            (width * scale).toInt().coerceAtLeast(1),
-                            (height * scale).toInt().coerceAtLeast(1),
-                            true
-                        )
-                    } else originalBitmap
-
-                    FileOutputStream(destFile).use { out ->
-                        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 88, out)
-                    }
-                    if (scaledBitmap != originalBitmap) {
-                        originalBitmap.recycle()
-                    }
-                    destFile.toURI().toString()
-                } else {
-                    photoUriString
-                }
-            } ?: photoUriString
-        } catch (e: Exception) {
-            Log.e(TAG, "Error persisting photo locally for contact $contactId", e)
-            photoUriString
-        }
-    }
-
-    fun generateBase64Photo(photoUriString: String?): String? {
-        if (photoUriString.isNullOrBlank()) return null
-        return try {
-            val uri = Uri.parse(photoUriString)
-            val inputStream = appContext.contentResolver.openInputStream(uri) ?: return null
-            val originalBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
-            inputStream.close()
-
-            val maxDim = 320
-            val width = originalBitmap.width
-            val height = originalBitmap.height
-            val scale = if (width > maxDim || height > maxDim) {
-                maxDim.toFloat() / maxOf(width, height)
-            } else 1.0f
-
-            val scaledBitmap = if (scale < 1.0f) {
-                Bitmap.createScaledBitmap(
-                    originalBitmap,
-                    (width * scale).toInt().coerceAtLeast(1),
-                    (height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else originalBitmap
-
-            val outStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 82, outStream)
-            val bytes = outStream.toByteArray()
-            if (scaledBitmap != originalBitmap) {
-                originalBitmap.recycle()
-            }
-            Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error generating base64 for photo", e)
-            null
-        }
-    }
-
-    fun saveBase64PhotoLocally(base64Str: String, contactId: String): String? {
-        return try {
-            val bytes = Base64.decode(base64Str, Base64.DEFAULT)
-            val photosDir = File(appContext.filesDir, "photos").apply { if (!exists()) mkdirs() }
-            val destFile = File(photosDir, "contact_${contactId}.jpg")
-            destFile.writeBytes(bytes)
-            destFile.toURI().toString()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error decoding base64 photo for contact $contactId", e)
-            null
+            clean
         }
     }
 
@@ -255,7 +158,7 @@ class ContactRepository(context: Context) {
         val photoBase64 = if (!contact.photoBase64.isNullOrBlank()) {
             contact.photoBase64
         } else {
-            generateBase64Photo(localPhotoUri ?: contact.photoUri)
+            PhotoStorageHelper.encodeToBase64(appContext, localPhotoUri ?: contact.photoUri)
         }
 
         val cleanPronunciation = if (contact.customPronunciation.isNullOrBlank() || contact.customPronunciation.equals("null", ignoreCase = true)) {
@@ -327,22 +230,21 @@ class ContactRepository(context: Context) {
     }
 
     suspend fun syncWithCloudContacts(cloudContacts: List<Contact>) = withContext(Dispatchers.IO) {
-        // Hydrate and verify local photo files from cloud Base64 or URL
+        // Hydrate and verify local photo files from cloud Base64 payload
         val hydrated = cloudContacts.map { contact ->
             var finalPhotoUri = contact.photoUri
-            val isLocalValid = if (finalPhotoUri != null && finalPhotoUri.startsWith("file:")) {
-                try {
-                    val f = File(java.net.URI.create(finalPhotoUri))
-                    f.exists() && f.length() > 0
-                } catch (e: Exception) {
-                    false
+            val hasValidLocalFile = if (!finalPhotoUri.isNullOrBlank()) {
+                val clean = when {
+                    finalPhotoUri.startsWith("file://") -> finalPhotoUri.removePrefix("file://")
+                    finalPhotoUri.startsWith("file:") -> finalPhotoUri.removePrefix("file:")
+                    else -> finalPhotoUri
                 }
-            } else {
-                finalPhotoUri != null
-            }
+                val f = File(clean)
+                f.exists() && f.length() > 0
+            } else false
 
-            if (!isLocalValid && !contact.photoBase64.isNullOrBlank()) {
-                val restoredPath = saveBase64PhotoLocally(contact.photoBase64, contact.id)
+            if (!hasValidLocalFile && !contact.photoBase64.isNullOrBlank()) {
+                val restoredPath = PhotoStorageHelper.decodeBase64ToDisk(appContext, contact.photoBase64, contact.id)
                 if (restoredPath != null) {
                     finalPhotoUri = restoredPath
                 }

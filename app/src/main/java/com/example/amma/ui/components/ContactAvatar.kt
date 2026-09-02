@@ -45,8 +45,9 @@ fun ContactAvatar(
     onEditPhotoClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val bitmap = remember(contact.photoUri) {
-        PhotoStorageHelper.loadBitmap(contact.photoUri)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bitmap = remember(contact.photoUri, contact.photoBase64) {
+        PhotoStorageHelper.loadBitmap(context, contact.photoUri, contact.photoBase64)
     }
 
     val relationshipIcon: ImageVector = when {

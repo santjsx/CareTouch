@@ -86,8 +86,9 @@ fun ContactTile(
         CallTransport.WHATSAPP_VIDEO -> AmmaWhatsAppGreen
     }
 
-    val bitmap = remember(contact.photoUri) {
-        PhotoStorageHelper.loadBitmap(contact.photoUri)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bitmap = remember(contact.photoUri, contact.photoBase64) {
+        PhotoStorageHelper.loadBitmap(context, contact.photoUri, contact.photoBase64)
     }
 
     val relationshipIcon: ImageVector = when {
